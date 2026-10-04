@@ -137,6 +137,8 @@ class _Deps:
     tool_attempts: int = 0  # every call the model made, including refused ones
     tool_cap: int = TOOL_CALLS_LIMIT
     tools_enabled: bool = True
+    code_fallback: FindingCandidate | None = None  # last valid doc-only answer on a code-backed requirement
+    code_note: str | None = None
 
 
 def make_model(name: str | None = None) -> Model:
@@ -346,6 +348,36 @@ def validate_candidate(
     return out, errors
 
 
+# Code evidence rule: a violation or evidence gap on a requirement whose hints name code must cite the code,
+# so that the CI review can anchor inline comments on it. Doc-only answers get a retry, never `uncertain`.
+CODE_REF_CONCLUSIONS = ("potential_violation", "insufficient_evidence")
+CODE_REF_NOTE = ("code evidence rule: no code location was cited after the retries; the conclusion is kept "
+                 "with document evidence only")
+
+
+def hinted_code_files(req: Requirement, bundle: EvidenceBundle) -> list[str]:
+    """Code files (not documents) of the bundle matched by the requirement's code hints."""
+    docs = {a.path for a in bundle.artifacts}
+    return [p for p in bundle.match_globs(req.evidence_hints.code_globs) if p not in docs]
+
+
+def code_without_ref(cand: FindingCandidate, req: Requirement, bundle: EvidenceBundle) -> list[str]:
+    """Hinted code files when `cand` needs a code citation and has none; else []."""
+    if cand.conclusion not in CODE_REF_CONCLUSIONS or any(isinstance(e, CodeRef) for e in cand.evidence):
+        return []
+    return hinted_code_files(req, bundle)
+
+
+def code_ref_message(cand: FindingCandidate, files: list[str]) -> str:
+    return (
+        f"Your {cand.conclusion} answer cites no code. This requirement is backed by code ({', '.join(files[:6])}): "
+        "cite the code lines that implement this (the line that does what the requirement prohibits, or the "
+        "model/form/prompt that shows what is missing); quote them exactly, one source line per `code` item, "
+        "with that file's `path`. Keep the same conclusion and your document evidence, and add at least one "
+        "`code` evidence item. The code is in the evidence: never add a `missing` item for code."
+    )
+
+
 # ----------------------------------------------------------------- agent
 
 
@@ -454,7 +486,19 @@ def _build_agent(model: Model | str) -> Agent[_Deps, FindingCandidate]:
     def check(ctx: RunContext[_Deps], out: FindingCandidate) -> FindingCandidate:
         fixed, errors = validate_candidate(out, ctx.deps.req, ctx.deps.bundle)
         if not errors:
-            return fixed
+            files = code_without_ref(fixed, ctx.deps.req, ctx.deps.bundle)
+            if not files:
+                return fixed
+            # Valid but doc-only on a code-backed requirement: keep it as the fallback (this rule never
+            # turns a conclusion into `uncertain`), then ask once more for the code lines.
+            ctx.deps.code_fallback = fixed
+            if ctx.retry >= OUTPUT_RETRIES:
+                ctx.deps.code_note = CODE_REF_NOTE
+                return fixed
+            msg = code_ref_message(fixed, files)
+            ctx.deps.emit("retry", attempt=ctx.retry + 1, summary="no code evidence cited, retrying",
+                          error=msg[:PREVIEW_MAX_BYTES])
+            raise ModelRetry(msg)
         ctx.deps.notes = errors  # the latest failed attempt is what the user needs to see
         ctx.deps.emit(
             "retry",
@@ -570,10 +614,15 @@ async def evaluate_requirement(
             notes = [f"tool-call limit reached ({TOOL_CALLS_LIMIT}); request cap hit: {e}"]
             break
         except UnexpectedModelBehavior as e:
-            notes = [f"output validation failed after {OUTPUT_RETRIES} retries"] + (deps.notes or [str(e)])
             attempts = 1 + OUTPUT_RETRIES
+            if deps.code_fallback is not None:  # the code retry broke the quotes: keep the valid doc-only answer
+                candidate, deps.code_note = deps.code_fallback, CODE_REF_NOTE
+                break
+            notes = [f"output validation failed after {OUTPUT_RETRIES} retries"] + (deps.notes or [str(e)])
             break
 
+    if candidate is not None and deps.code_note and code_without_ref(candidate, req, bundle):
+        notes.append(deps.code_note)
     if candidate is None:
         candidate = _uncertain(req, notes)
     emit(
