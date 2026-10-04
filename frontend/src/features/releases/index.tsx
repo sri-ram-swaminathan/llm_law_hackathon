@@ -1,18 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion } from "framer-motion";
-import { FileArchive, FileUp, GitBranch, GitPullRequest, Loader2, PackagePlus, Rocket, Sprout, UploadCloud, User, Wrench, X } from "lucide-react";
+import { FileArchive, Loader2, Rocket, Sprout, UploadCloud, User, X } from "lucide-react";
 import { useRef, useState, type DragEvent, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { type ReleaseOut } from "@/api/client";
 import { Button } from "@/components/button";
-import { Card, Mono, Skeleton } from "@/components/card";
 import { Dialog } from "@/components/popover-menu";
-import { Notice } from "@/features/fixplan";
-import { sortReleases, useReleases, versionLabel } from "@/lib/queries";
-import { registerSlot } from "@/lib/slots";
+import { sortReleases } from "@/lib/queries";
+import { paths } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { addToCache, importCiRun, readCiResult, uploadRelease, VERSION_RE } from "./api";
-import { WhatChanged } from "./WhatChanged";
 
 type Source = ReleaseOut["release"]["source"];
 const SOURCE: Record<Source, { label: string; Icon: typeof Sprout; cls: string }> = {
@@ -30,92 +26,6 @@ export function SourceBadge({ source }: { source: Source }) {
   );
 }
 
-const fmtDate = (iso?: string | null) => {
-  if (!iso) return null;
-  const d = new Date(iso);
-  return isNaN(+d) ? null : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-};
-
-/* ---------------- page ---------------- */
-
-export function ReleasesPage() {
-  const { data, isLoading, isError, refetch } = useReleases();
-  const [dialog, setDialog] = useState<"new" | "import" | null>(null);
-  const list = [...sortReleases(data ?? [])].reverse();
-  const reduce = useReducedMotion();
-
-  return (
-    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6" data-testid="releases-page">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl">Releases</h1>
-          <p className="mt-1 text-sm text-text-2">Every version of Wealthpilot the CCO has seen, whether seeded, uploaded here or imported from CI.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="md" onClick={() => setDialog("import")} data-testid="import-ci"><FileUp className="h-4 w-4" /> Import CI run</Button>
-          <Button size="md" variant="primary" onClick={() => setDialog("new")} data-testid="new-release"><PackagePlus className="h-4 w-4" /> New release</Button>
-        </div>
-      </div>
-
-      {isLoading && <div className="space-y-3" aria-busy="true"><Skeleton className="h-20" /><Skeleton className="h-20" /><Skeleton className="h-20" /></div>}
-      {isError && <Notice title="Releases could not be loaded" body="Check that the backend is running, then try again." action={<Button onClick={() => refetch()}>Retry</Button>} />}
-      {data && list.length === 0 && (
-        <Notice tone="neutral" title="No releases yet" body="Upload a bundle of your product's documents and code to create the first release." action={<Button variant="primary" size="md" onClick={() => setDialog("new")}>New release</Button>} />
-      )}
-
-      <ul className="space-y-3">
-        {list.map((r, i) => (
-          <motion.li key={r.release.id} data-testid={`release-row-${r.release.version}`}
-            initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: Math.min(i, 6) * 0.03 }}>
-            <ReleaseRow r={r} />
-          </motion.li>
-        ))}
-      </ul>
-
-      <p className="mt-6 text-sm text-text-3">
-        Assessing a new release against a different regulatory profile? <Link to="/profile" className="text-accent hover:underline">Review the profile</Link>.
-      </p>
-
-      <NewReleaseDialog open={dialog === "new"} onClose={() => setDialog(null)} releases={data ?? []} />
-      <ImportDialog open={dialog === "import"} onClose={() => setDialog(null)} />
-    </div>
-  );
-}
-
-function ReleaseRow({ r }: { r: ReleaseOut }) {
-  const rel = r.release;
-  const date = fmtDate(rel.created_at);
-  const assessed = !!r.latest_assessment;
-  return (
-    <Card className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3.5 transition-colors duration-fast hover:bg-surface-2/50">
-      <div className="min-w-0 flex-1 basis-60">
-        <div className="flex flex-wrap items-center gap-2">
-          <Link to={`/r/${rel.id}/overview`} className="font-mono text-base font-medium hover:text-accent">{versionLabel(rel.version)}</Link>
-          <SourceBadge source={rel.source} />
-          {rel.pr_number != null && (
-            rel.ci_run_url
-              ? <a href={rel.ci_run_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-accent hover:underline" data-testid="pr-link"><GitPullRequest className="h-3.5 w-3.5" /> PR #{rel.pr_number}</a>
-              : <span className="inline-flex items-center gap-1 text-sm text-text-2"><GitPullRequest className="h-3.5 w-3.5" /> PR #{rel.pr_number}</span>
-          )}
-          {rel.pr_number == null && rel.ci_run_url && (
-            <a href={rel.ci_run_url} target="_blank" rel="noreferrer" className="text-sm text-accent hover:underline">CI run</a>
-          )}
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-2">
-          {rel.branch && <span className="inline-flex items-center gap-1"><GitBranch className="h-3 w-3" />{rel.branch}</span>}
-          {rel.git_sha && <Mono className="text-text-3">{rel.git_sha.slice(0, 7)}</Mono>}
-          {date && <span>{date}</span>}
-          <span>{r.artifacts?.length ? `${r.artifacts.length} artifacts` : "no artifacts attached"}</span>
-          {!assessed && <span className="rounded-full border border-dashed px-1.5 text-text-3">not assessed yet</span>}
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <Button asChild><Link to={`/r/${rel.id}/overview`}>Open</Link></Button>
-        {assessed && <Button asChild variant="ghost"><Link to={`/r/${rel.id}/fix-plan`}><Wrench className="h-3.5 w-3.5" /> Fix plan</Link></Button>}
-      </div>
-    </Card>
-  );
-}
 
 /* ---------------- dialogs ---------------- */
 
@@ -184,7 +94,7 @@ function ErrorLine({ children }: { children: ReactNode }) {
   return <p role="alert" className="rounded-md border border-blocker-bd bg-blocker-bg px-3 py-2 text-sm text-blocker-fg">{children}</p>;
 }
 
-function NewReleaseDialog({ open, onClose, releases }: { open: boolean; onClose: () => void; releases: ReleaseOut[] }) {
+export function NewReleaseDialog({ open, onClose, releases }: { open: boolean; onClose: () => void; releases: ReleaseOut[] }) {
   const qc = useQueryClient();
   const nav = useNavigate();
   const [files, setFiles] = useState<File[]>([]);
@@ -195,7 +105,7 @@ function NewReleaseDialog({ open, onClose, releases }: { open: boolean; onClose:
   const reset = () => { setFiles([]); setVersion(""); setPct(0); up.reset(); };
   const up = useMutation({
     mutationFn: () => uploadRelease(files, version.trim().replace(/^v/, ""), latest, setPct),
-    onSuccess: (out) => { addToCache(qc, out); reset(); onClose(); nav(`/r/${out.release.id}/overview`); },
+    onSuccess: (out) => { addToCache(qc, out); reset(); onClose(); nav(paths.summary(out.release.product_id, out.release.version)); },
   });
 
   const v = version.trim().replace(/^v/, "");
@@ -233,13 +143,13 @@ function NewReleaseDialog({ open, onClose, releases }: { open: boolean; onClose:
   );
 }
 
-function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const nav = useNavigate();
   const [files, setFiles] = useState<File[]>([]);
   const imp = useMutation({
     mutationFn: async () => importCiRun(await readCiResult(files[0])),
-    onSuccess: (out) => { addToCache(qc, out); setFiles([]); imp.reset(); onClose(); nav(`/r/${out.release.id}/overview`); },
+    onSuccess: (out) => { addToCache(qc, out); setFiles([]); imp.reset(); onClose(); nav(paths.summary(out.release.product_id, out.release.version)); },
   });
   const close = () => { if (imp.isPending) return; setFiles([]); imp.reset(); onClose(); };
 
@@ -259,6 +169,4 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void })
   );
 }
 
-export function register(): void {
-  registerSlot("overview.whatChanged", WhatChanged, { id: "releases.whatChanged" });
-}
+

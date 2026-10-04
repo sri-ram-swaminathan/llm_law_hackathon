@@ -1,0 +1,72 @@
+name: compliance
+
+# CCOmmit release gate (SPEC 6.12). CCOmmit runs on this runner in headless CLI mode (SQLite, no Postgres needed).
+# Never pull_request_target: PR code must not run with secrets.
+# On pull requests ci_run.sh posts a PR review (inline comments on changed lines) plus the upserted summary comment.
+on:
+  pull_request:
+    branches: [main, demo/base]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: compliance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compliance:
+    name: compliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out product
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Check out CCOmmit
+        uses: actions/checkout@v4
+        with:
+          repository: sri-ram-swaminathan/llm_law_hackathon
+          ref: ft/cco-mvp
+          token: ${{ secrets.CCOMMIT_REPO_TOKEN }}
+          path: _ccommit
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install CCOmmit
+        working-directory: _ccommit/backend
+        run: uv sync
+
+      - name: Run CCOmmit
+        env:
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          CCOMMIT_DIR: ${{ github.workspace }}/_ccommit
+          OUT_DIR: ${{ github.workspace }}/out
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          CCOMMIT_APP_URL: ${{ vars.CCOMMIT_APP_URL }}
+        run: bash scripts/ci_run.sh
+
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ccommit-result
+          path: |
+            out/result.json
+            out/comment.md
+            out/fix-plan.md
+          if-no-files-found: warn
