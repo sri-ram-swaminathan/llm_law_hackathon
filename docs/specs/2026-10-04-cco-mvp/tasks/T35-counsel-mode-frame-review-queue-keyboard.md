@@ -3,12 +3,12 @@ id: T35
 title: Counsel mode — frame, review queue, keyboard flow, gate-impact preview, inline actions
 kind: work                  # work | verify | gate
 deps: [T27]
-owns: [frontend/src/features/review/**, frontend/src/features/persona/**, frontend/e2e/counsel.spec.ts]                # work only: paths or globs this task may edit
+owns: [frontend/.T35-skipped]
 repo: .
 needs: [cmd:pnpm]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd frontend && pnpm exec tsc -b && pnpm exec vitest run src/features/review && pnpm exec playwright test counsel.spec.ts"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: todo                   # todo | doing | review | done | blocked | skipped
+status: skipped                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T35 — Counsel mode — frame, review queue, keyboard flow, gate-impact preview, inline actions

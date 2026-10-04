@@ -2,7 +2,7 @@
 id: V3
 title: Redesign check — build, full e2e, live Start demo, visual pass
 kind: verify                  # work | verify | gate
-deps: [T33, T28]
+deps: [T37, T38, T28, T36]
 owns: []                # work only: paths or globs this task may edit
 repo: .
 needs: [docker, cmd:pnpm]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host

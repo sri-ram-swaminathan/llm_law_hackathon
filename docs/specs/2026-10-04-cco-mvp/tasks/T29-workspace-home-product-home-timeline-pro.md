@@ -3,12 +3,12 @@ id: T29
 title: Workspace home, product home (timeline, provenance, Connect CI, profile), Summary
 kind: work                  # work | verify | gate
 deps: [T27, T17]
-owns: [frontend/src/features/workspace/**, frontend/src/features/product/**, frontend/src/features/summary/**, frontend/src/features/releases/**, frontend/src/features/profile/**, frontend/src/features/overview/**, frontend/e2e/golden-path.spec.ts, frontend/e2e/releases.spec.ts, frontend/e2e/product.spec.ts]                # work only: paths or globs this task may edit
+owns: [frontend/.T29-skipped]
 repo: .
 needs: [cmd:pnpm]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd frontend && pnpm exec tsc -b && pnpm exec vitest run src/features/summary src/features/product && pnpm exec playwright test golden-path.spec.ts releases.spec.ts product.spec.ts"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: todo                   # todo | doing | review | done | blocked | skipped
+status: skipped                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T29 — Workspace home, product home (timeline, provenance, Connect CI, profile), Summary

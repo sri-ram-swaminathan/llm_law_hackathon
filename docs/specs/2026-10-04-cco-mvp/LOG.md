@@ -212,3 +212,12 @@
 - 2026-10-04 16:47 · run · pushed ft/cco-mvp-t26
 - 2026-10-04 16:47 · run · T26 merged into ft/cco-mvp
 - 2026-10-04 16:47 · run · T26 → done — merged; snapshot 10/10 x3 first attempt; demo endpoints
+- 2026-10-04 16:48 · run · pushed ft/cco-mvp
+- 2026-10-04 16:48 · run · T36 worktree on ft/cco-mvp-t36
+- 2026-10-04 16:48 · run · T36 → doing
+- 2026-10-04 16:55 · run · T29 → skipped — compressed into T37/T38 (founder: 3 tasks)
+- 2026-10-04 16:55 · run · T30 → skipped — compressed into T37/T38 (founder: 3 tasks)
+- 2026-10-04 16:55 · run · T31 → skipped — compressed into T37/T38 (founder: 3 tasks)
+- 2026-10-04 16:55 · run · T32 → skipped — compressed into T37/T38 (founder: 3 tasks)
+- 2026-10-04 16:55 · run · T35 → skipped — compressed into T37/T38 (founder: 3 tasks)
+- 2026-10-04 16:55 · run · T33 → skipped — compressed into T37/T38 (founder: 3 tasks)

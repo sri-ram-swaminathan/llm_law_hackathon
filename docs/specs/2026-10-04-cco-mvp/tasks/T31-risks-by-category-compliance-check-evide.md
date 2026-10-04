@@ -3,12 +3,12 @@ id: T31
 title: Risks by category + Compliance check (evidence ↔ verdict ↔ law)
 kind: work                  # work | verify | gate
 deps: [T27]
-owns: [frontend/src/features/risks/**, frontend/src/features/check/**, frontend/src/features/legal/**, frontend/src/features/finding/**, frontend/src/features/findings/**, frontend/e2e/finding.spec.ts, frontend/e2e/check.spec.ts]                # work only: paths or globs this task may edit
+owns: [frontend/.T31-skipped]
 repo: .
 needs: [cmd:pnpm]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd frontend && pnpm exec tsc -b && pnpm exec vitest run src/features/check src/features/risks && pnpm exec playwright test check.spec.ts"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: todo                   # todo | doing | review | done | blocked | skipped
+status: skipped                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T31 — Risks by category + Compliance check (evidence ↔ verdict ↔ law)

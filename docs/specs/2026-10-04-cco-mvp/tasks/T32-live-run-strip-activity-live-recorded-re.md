@@ -3,12 +3,12 @@ id: T32
 title: Live run strip, Activity (Live/Recorded/Replay), Start demo UI, Fix plan polish
 kind: work                  # work | verify | gate
 deps: [T27, T17]
-owns: [frontend/src/features/activity/**, frontend/src/features/demo/**, frontend/src/features/fixplan/**, frontend/e2e/activity.spec.ts, frontend/e2e/fixplan.spec.ts]                # work only: paths or globs this task may edit
+owns: [frontend/.T32-skipped]
 repo: .
 needs: [cmd:pnpm]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd frontend && pnpm exec tsc -b && pnpm exec vitest run src/features/activity src/features/fixplan && pnpm exec playwright test activity.spec.ts fixplan.spec.ts"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: todo                   # todo | doing | review | done | blocked | skipped
+status: skipped                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T32 — Live run strip, Activity (Live/Recorded/Replay), Start demo UI, Fix plan polish

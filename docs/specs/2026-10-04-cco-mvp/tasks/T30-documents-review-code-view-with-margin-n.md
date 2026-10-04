@@ -3,12 +3,12 @@ id: T30
 title: Documents review + Code view with margin notes, Add/replace document
 kind: work                  # work | verify | gate
 deps: [T27, T17]
-owns: [frontend/src/features/documents/**, frontend/src/features/code/**, frontend/src/features/viewer/**, frontend/src/features/add-document/**, frontend/src/features/evidence/**, frontend/e2e/documents.spec.ts, frontend/e2e/add-document.spec.ts]                # work only: paths or globs this task may edit
+owns: [frontend/.T30-skipped]
 repo: .
 needs: [cmd:pnpm]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd frontend && pnpm exec tsc -b && pnpm exec vitest run src/features/viewer src/features/documents && pnpm exec playwright test documents.spec.ts add-document.spec.ts"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: todo                   # todo | doing | review | done | blocked | skipped
+status: skipped                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T30 — Documents review + Code view with margin notes, Add/replace document

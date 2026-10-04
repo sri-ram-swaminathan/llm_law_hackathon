@@ -3,12 +3,12 @@ id: T33
 title: Demo-path e2e on the live stack + run docs
 kind: work                  # work | verify | gate
 deps: [T26, T29, T30, T31, T32, T35]
-owns: [frontend/e2e/demo-path.spec.ts, frontend/playwright.live.config.ts, docs/run.md, docs/demo-script.md]                # work only: paths or globs this task may edit
+owns: [frontend/.T33-skipped]
 repo: .
 needs: [cmd:pnpm, docker, env:MISTRAL_API_KEY@.env]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd frontend && pnpm exec playwright test -c playwright.live.config.ts demo-path.spec.ts"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: todo                   # todo | doing | review | done | blocked | skipped
+status: skipped                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T33 — Demo-path e2e on the live stack + run docs
