@@ -8,7 +8,7 @@ repo: .
 needs: [docker, cmd:pnpm, cmd:uv, env:MISTRAL_API_KEY@.env]
 verify: make verify-w2
 review: none
-status: doing
+status: done
 ---
 
 # V2 — Wave 2 check: live run end to end in the UI
