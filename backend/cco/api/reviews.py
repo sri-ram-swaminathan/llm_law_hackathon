@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from ..contracts import Review, ReviewCreate
 from ..db import get_session
 from ..models import AssessmentRow, FindingRow, ReleaseRow, ReviewRow
+from .. import gate
 from . import deps
 
 router = APIRouter(tags=["reviews"])
@@ -29,6 +30,9 @@ def create_review(finding_id: str, body: ReviewCreate, s: Session = Depends(get_
         raise HTTPException(422, "reviewer_name is required")
     arow = s.get(AssessmentRow, frow.assessment_id)
     rrow = s.get(ReleaseRow, arow.release_id)
+    fingerprint = frow.data["evidence_fingerprint"]
+    if body.decision == "not_applicable":  # profile-scoped carry (SPEC §6.3): store the profile hash
+        fingerprint = gate.PROFILE_FP_PREFIX + gate.profile_hash(deps.get_product(s)[1])
     review = Review(
         id=f"rev-{uuid.uuid4().hex[:12]}",
         finding_id=finding_id,
@@ -38,7 +42,7 @@ def create_review(finding_id: str, body: ReviewCreate, s: Session = Depends(get_
         decision=body.decision,
         override_conclusion=body.override_conclusion,
         comment=body.comment,
-        evidence_fingerprint=frow.data["evidence_fingerprint"],
+        evidence_fingerprint=fingerprint,
         created_at=datetime.now(timezone.utc),
     )
     s.add(
