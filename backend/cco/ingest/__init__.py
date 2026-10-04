@@ -102,7 +102,7 @@ def _clean_path(name: str) -> str:
     return "/".join(p for p in parts if p != ".")
 
 
-def _collect_zip(data: bytes | Path, files: dict[str, bytes], budget: dict) -> None:
+def _collect_zip(data: bytes | Path, files: dict[str, bytes], budget: dict, *, nested: bool = False) -> None:
     size = len(data) if isinstance(data, bytes) else data.stat().st_size
     if size > MAX_COMPRESSED_BYTES:
         raise BundleError("bundle exceeds the 50 MB compressed limit")
@@ -138,6 +138,10 @@ def _collect_zip(data: bytes | Path, files: dict[str, bytes], budget: dict) -> N
             budget["bytes"] += len(raw)
             if budget["bytes"] > MAX_UNCOMPRESSED_BYTES:
                 raise BundleError("bundle exceeds the 200 MB uncompressed limit")
+            if name == "code.zip" and not nested:
+                # demo/UI upload layout: one zip holding code.zip + compliance/ — unpack one level only
+                _collect_zip(raw, files, budget, nested=True)
+                continue
             files[name] = raw
 
 
