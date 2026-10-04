@@ -42,3 +42,8 @@
 - 2026-10-04 14:55 · run · pushed ft/cco-mvp-t13
 - 2026-10-04 14:55 · run · T13 merged into ft/cco-mvp
 - 2026-10-04 14:55 · run · T13 → done — merged; demo/v1=0042de0; 30 tests; conftest deviation accepted
+- 2026-10-04 14:55 · run · pushed ft/cco-mvp
+- 2026-10-04 14:58 · verify · T01 verify exit 0 (0s)
+- 2026-10-04 14:58 · run · pushed ft/cco-mvp-t01
+- 2026-10-04 14:58 · run · T01 merged into ft/cco-mvp
+- 2026-10-04 14:58 · run · T01 → done — merged; contracts frozen

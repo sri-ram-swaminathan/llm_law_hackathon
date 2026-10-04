@@ -3,12 +3,12 @@ id: T01
 title: Contracts, fixtures and project skeleton
 kind: work
 deps: []
-owns: [frontend/src/api/types.ts, backend/pyproject.toml, backend/uv.lock, backend/cco/__init__.py, backend/cco/contracts/**, backend/tests/conftest.py, backend/tests/test_contracts.py, contracts/**, data/packs/schema.json, data/products/**, demo/wealthpilot/expected.yaml, docs/design.md, Makefile, docker-compose.yml, scripts/gen_types.sh, .gitignore]
+owns: [frontend/src/api/types.ts, backend/.python-version, backend/pyproject.toml, backend/uv.lock, backend/cco/__init__.py, backend/cco/contracts/**, backend/tests/conftest.py, backend/tests/test_contracts.py, contracts/**, data/packs/schema.json, data/products/**, demo/wealthpilot/expected.yaml, docs/design.md, Makefile, docker-compose.yml, scripts/gen_types.sh, .gitignore]
 repo: .
 needs: [cmd:uv, cmd:pnpm]
 verify: cd backend && uv run pytest tests/test_contracts.py -q
 review: none
-status: doing
+status: done
 ---
 
 # T01 — Contracts, fixtures and project skeleton
