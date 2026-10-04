@@ -32,3 +32,14 @@ describe("activity", () => {
     expect(gapMs(b, a, 1)).toBe(0);
   });
 });
+
+import { runLabel } from "./labels";
+describe("runLabel", () => {
+  const base = { started_at: "2026-10-04T14:01:00Z", ended_at: "2026-10-04T14:01:46Z" };
+  it("says Live only while running", () => {
+    expect(runLabel({ ...base, status: "running" }).text).toBe("Live");
+    expect(runLabel({ ...base, status: "ok" }).text).toMatch(/^Recorded run · .+ · 46 s$/);
+    expect(runLabel({ ...base, status: "ok" }, true).text).toMatch(/^Replay of recorded run/);
+    for (const s of ["ok", "failed"] as const) expect(runLabel({ ...base, status: s }).text).not.toContain("Live");
+  });
+});

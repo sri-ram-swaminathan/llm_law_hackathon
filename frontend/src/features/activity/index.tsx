@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { counters, fmtElapsed } from "./model";
 import { useRunStream } from "./stream";
 import { Timeline } from "./Timeline";
+import { RunStrip } from "./RunStrip";
 
 type RunTotals = { status: string; totals: { events: number; tool_calls: number; retries: number; findings: number } };
 
@@ -139,6 +140,10 @@ export function ProducedTab({ finding }: { finding: FindingView }) {
   );
 }
 
+export { RunStrip, useLatestRun } from "./RunStrip";
+export { runLabel } from "./labels";
+
 export function register(): void {
   registerSlot("finding.tab.produced", ProducedTab, { id: "produced" });
+  registerSlot("release.runStrip", RunStrip, { id: "run-strip" });
 }

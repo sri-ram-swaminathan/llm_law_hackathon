@@ -42,3 +42,12 @@ describe("viewer", () => {
     expect(rows[0].textContent).toContain("1");
   });
 });
+
+import { stackNotes } from "./MarginNotes";
+describe("stackNotes", () => {
+  it("keeps y order and never overlaps", () => {
+    const tops = stackNotes([10, 20, 400, 405], [100, 50, 30, 30]);
+    expect(tops).toEqual([10, 118, 400, 438]);
+    for (let i = 1; i < tops.length; i++) expect(tops[i]).toBeGreaterThanOrEqual(tops[i - 1]);
+  });
+});
