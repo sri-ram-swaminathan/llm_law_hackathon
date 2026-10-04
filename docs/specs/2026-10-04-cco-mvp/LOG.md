@@ -188,3 +188,8 @@
 - 2026-10-04 15:43 · run · T25 worktree on ft/cco-mvp-t25
 - 2026-10-04 15:43 · run · T25 → doing
 - 2026-10-04 15:48 · run · V2 → done — live v0.9.0 ok; e2e 9/9; v1.0.0 false positives → T25
+- 2026-10-04 15:48 · run · pushed ft/cco-mvp
+- 2026-10-04 16:11 · verify · T25 verify exit 0 (1s)
+- 2026-10-04 16:11 · run · pushed ft/cco-mvp-t25
+- 2026-10-04 16:11 · run · T25 merged into ft/cco-mvp
+- 2026-10-04 16:11 · run · T25 → done — merged; v1.0.0 10/10 x4, v0.9.0 9/10 x2

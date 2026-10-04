@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv, env:MISTRAL_API_KEY@.env]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd backend && uv run pytest tests/test_evaluator.py tests/test_hardening.py tests/test_pack.py -q"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: doing                   # todo | doing | review | done | blocked | skipped
+status: done                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T25 — v1.0.0 accuracy — no false positives on the fixed release (W1, W6)
