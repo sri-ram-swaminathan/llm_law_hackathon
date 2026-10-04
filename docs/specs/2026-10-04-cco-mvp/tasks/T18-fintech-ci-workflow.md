@@ -8,7 +8,7 @@ repo: ../FinTechProto
 needs: [cmd:uv]
 verify: uv run --no-project --with pyyaml python -c "import yaml; d=yaml.safe_load(open('.github/workflows/compliance.yml')); assert 'jobs' in d"
 review: none
-status: doing
+status: done
 ---
 
 # T18 — FinTechProto: `compliance.yml` CI workflow

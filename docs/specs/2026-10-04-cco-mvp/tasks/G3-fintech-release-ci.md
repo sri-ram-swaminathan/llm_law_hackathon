@@ -2,7 +2,7 @@
 id: G3
 title: Human — FinTechProto release PR red → green (replayable)
 kind: gate
-deps: [G1, T13, T18]
+deps: [G1, T13, T18, T22, T23]
 owns: []
 repo: ../FinTechProto
 needs: [gh]

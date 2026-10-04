@@ -150,3 +150,8 @@
 - 2026-10-04 15:25 · run · pushed ft/cco-mvp-t21
 - 2026-10-04 15:25 · run · T21 merged into ft/cco-mvp
 - 2026-10-04 15:25 · run · T21 → done — merged; make up smoke ok
+- 2026-10-04 15:25 · run · pushed ft/cco-mvp
+- 2026-10-04 15:27 · verify · T18 verify exit 0 (0s)
+- 2026-10-04 15:27 · run · pushed ft/cco-mvp-t18
+- 2026-10-04 15:27 · run · T18 merged into ft/cco-mvp
+- 2026-10-04 15:27 · run · T18 → done — merged; push2 dry run red → T22/T23
