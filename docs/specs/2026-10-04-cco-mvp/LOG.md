@@ -197,3 +197,7 @@
 - 2026-10-04 16:29 · run · G2 → done — adjust: UI redesign phase (see gate file §7)
 - 2026-10-04 16:30 · run · pushed ft/cco-mvp
 - 2026-10-04 16:39 · run · T19 → skipped — replaced by the UI redesign tasks T27, T29–T33 (G2 adjust)
+- 2026-10-04 16:39 · run · T26 worktree on ft/cco-mvp-t26
+- 2026-10-04 16:39 · run · T26 → doing
+- 2026-10-04 16:39 · run · T28 worktree on ft/cco-mvp-t28
+- 2026-10-04 16:39 · run · T28 → doing

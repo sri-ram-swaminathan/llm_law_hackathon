@@ -8,7 +8,7 @@ repo: ../FinTechProto
 needs: [cmd:uv, gh]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "python3 -m pytest tests/test_ci_review.py -q"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: todo                   # todo | doing | review | done | blocked | skipped
+status: doing                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T28 — CI PR review — inline code comments from findings, workflow fixed

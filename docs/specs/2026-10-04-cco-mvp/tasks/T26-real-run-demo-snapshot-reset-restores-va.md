@@ -3,12 +3,12 @@ id: T26
 title: Real-run demo snapshot — reset restores validated live runs, no hand-written findings
 kind: work                  # work | verify | gate
 deps: [T25, T21]
-owns: [scripts/demo_snapshot.sh, demo/snapshot/**, backend/cco/seed.py, backend/tests/test_seed_snapshot.py, Makefile]                # work only: paths or globs this task may edit
+owns: [scripts/demo_snapshot.sh, demo/snapshot/**, backend/cco/seed.py, backend/tests/test_seed_snapshot.py, Makefile, backend/cco/demo/**, backend/cco/api/demo.py, backend/cco/main.py, backend/tests/test_demo.py, backend/tests/data/snapshot/**]
 repo: .
 needs: [cmd:uv, env:MISTRAL_API_KEY@.env]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd backend && uv run pytest tests/test_seed_snapshot.py -q"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: todo                   # todo | doing | review | done | blocked | skipped
+status: doing                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T26 — Real-run demo snapshot — reset restores validated live runs, no hand-written findings
