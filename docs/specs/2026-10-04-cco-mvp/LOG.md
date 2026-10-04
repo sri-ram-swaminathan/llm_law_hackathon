@@ -173,3 +173,8 @@
 - 2026-10-04 15:33 · run · pushed ft/cco-mvp
 - 2026-10-04 15:33 · run · T24 worktree on ft/cco-mvp-t24
 - 2026-10-04 15:33 · run · T24 → doing
+- 2026-10-04 15:33 · run · pushed ft/cco-mvp
+- 2026-10-04 15:34 · verify · T20 verify exit 0 (1s)
+- 2026-10-04 15:34 · run · pushed ft/cco-mvp-t20
+- 2026-10-04 15:34 · run · T20 merged into ft/cco-mvp
+- 2026-10-04 15:34 · run · T20 → done — merged; live check 9-10/10
