@@ -10,3 +10,4 @@
 - 2026-10-04 14:10 · spec · rev 2 applied critique 01; decisions D1-D18 decided
 - 2026-10-04 14:11 · run · pushed ft/cco-mvp
 - 2026-10-04 14:19 · spec · rev 3: CCOmmit name; local hosting, CI on GH runners; no sign-off gate; guidance sources; FinTechProto regrounded @ dbb8e64
+- 2026-10-04 14:19 · run · pushed ft/cco-mvp

@@ -539,7 +539,7 @@ Layout: `backend/`, `frontend/`, `contracts/`, `data/packs/`, `data/corpus-cache
 | D9 | Live run with event replay from the same table | Stage safety, same code path (M9) | decided |
 | D10 | React + Vite + TS + Tailwind + shadcn; **no chat** in V1 | Scope (M4) | decided |
 | D11 | Agent-activity layer is first-class but slim | Core demo (M9) | decided |
-| D12 | Wealthpilot; **v1.0.0 accumulates on `dev`**; v0.9.0 = ae1c4e5 + a docs-only commit; base-branch actions are human gates | Consistent anchors (M1) | decided |
+| D12 | Wealthpilot; **v1.0.0 accumulates on `dev`**; v0.9.0 = dbb8e64 + a docs-only commit; base-branch actions are human gates | Consistent anchors (M1) | decided |
 | D13 | Fix plan **rendered deterministically** from pack templates; one format for UI, CI and MCP | Testable, identical everywhere (M3) | decided |
 | D14 | CI release gate in V1, **run on GitHub-hosted runners** with `cco audit`; evidence config in CCOmmit's repo; reviews and baseline travel in `compliance/cco-baseline.json`; exit 2 = engine error; results imported locally | Local hosting (Q3), hardened (M6) | decided |
 | D15 | One ingestion path: ZIP + `compliance/*.md`; hardened; redacted | Simplicity + safety (M5) | decided |
