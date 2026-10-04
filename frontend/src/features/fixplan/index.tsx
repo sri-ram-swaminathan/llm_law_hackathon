@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, Check, ClipboardCopy, Download, FileText, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, CircleCheck, ClipboardCopy, Download, FileText, Wrench } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link } from "react-router";
 import { FIXTURES, http } from "@/api/client";
 import { Button } from "@/components/button";
 import { Card, Skeleton } from "@/components/card";
 import { Tabs } from "@/components/popover-menu";
-import { useReleases, versionLabel } from "@/lib/queries";
+import { useCurrentRelease, useFindings, useRequirements, reqIndex, aliasOf, versionLabel } from "@/lib/queries";
+import { paths } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import goldenPlan from "./golden-plan.md?raw";
 import { Prose } from "./Prose";
@@ -106,15 +107,21 @@ async function copyText(text: string): Promise<boolean> {
 
 /* ---------------- page ---------------- */
 
+/** Founder actions = rows of the appendix table ("| A1 | …"). */
+const founderActions = (sections: Section[]) =>
+  sections.filter((s) => s.kind === "appendix").reduce((n, s) => n + (s.body.match(/^\|\s*A\d+\s*\|/gm)?.length ?? 0), 0);
+/** Requirement id cited in a section heading ("1. FR-SUITABILITY-01: …"). */
+const reqIdOf = (heading: string) => heading.match(/^\d+\.\s*([A-Z0-9-]+)/)?.[1];
+
 export function FixPlanPage() {
-  const { release = "" } = useParams();
-  const releases = useReleases();
-  const rel = releases.data?.find((r) => r.release.id === release);
-  const assessmentId = rel?.latest_assessment?.id;
-  const version = rel?.release.version ?? "";
+  const { productId, version, release, releaseId, isPending } = useCurrentRelease();
+  const assessmentId = release?.latest_assessment?.id;
+  const findings = useFindings(releaseId);
+  const reqs = useRequirements();
+  const idx = useMemo(() => reqIndex(reqs.data), [reqs.data]);
 
   const plan = useQuery({
-    queryKey: ["fix-plan", release, assessmentId],
+    queryKey: ["fix-plan", releaseId, assessmentId],
     queryFn: () => fetchPlan(assessmentId!, version),
     enabled: !!assessmentId,
     retry: false,
@@ -122,63 +129,83 @@ export function FixPlanPage() {
 
   const parsed = useMemo(() => (plan.data ? parsePlan(plan.data) : null), [plan.data]);
   const [tab, setTab] = useState<"agent" | "founder">("agent");
+  const codeItems = parsed?.sections.filter((s) => s.kind === "code") ?? [];
+  const actions = parsed ? founderActions(parsed.sections) : 0;
+  const nothing = !!parsed && codeItems.length === 0 && actions === 0;
+  const checkFor = (heading: string) => {
+    const rid = reqIdOf(heading);
+    const f = rid ? findings.data?.find((x) => x.requirement_id === rid) : undefined;
+    return f ? { href: paths.risks(productId, version, f.id), alias: aliasOf(idx, f.requirement_id) } : null;
+  };
 
-  const loading = releases.isLoading || (!!assessmentId && plan.isLoading);
-  const noAssessment = !!rel && !assessmentId;
-  const missingRelease = !!releases.data && !rel;
+  const loading = isPending || (!!assessmentId && plan.isLoading);
+  const noAssessment = !!release && !assessmentId;
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6" data-testid="fix-plan-page">
-      <Link to={`/r/${release}/overview`} className="mb-4 inline-flex items-center gap-1 text-sm text-text-2 hover:text-text">
-        <ArrowLeft className="h-3.5 w-3.5" /> Overview
-      </Link>
+    <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6" data-testid="fix-plan-page">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-xl"><Wrench className="h-5 w-5 text-text-2" /> Fix plan</h1>
+          {parsed && !nothing && (
+            <p className="mt-1 text-sm text-text" data-testid="fixplan-summary">
+              {codeItems.length} code {codeItems.length === 1 ? "change" : "changes"} · {actions} founder {actions === 1 ? "action" : "actions"} · ordered blocker → medium
+            </p>
+          )}
           <p className="mt-1 text-sm text-text-2">
-            Generated from the validated findings and the requirement templates{version ? <> for <span className="font-mono text-code">{versionLabel(version)}</span></> : null}. No LLM call, so the output is identical in the UI, CI and MCP.
+            Generated from the validated findings{version ? <> of <span className="font-mono text-code">{versionLabel(version)}</span></> : null}. No LLM call, so the output is identical in the UI, CI and MCP.
           </p>
         </div>
-        {plan.data && <Actions md={plan.data} version={version} />}
+        {plan.data && !nothing && <Actions md={plan.data} version={version} />}
       </div>
 
       {loading && <PlanSkeleton />}
-
-      {(releases.isError || missingRelease) && (
-        <Notice title="Release not found" body="This release is not available. Pick another one from the switcher." />
-      )}
       {noAssessment && (
         <Notice title="No assessment yet" body="Run an assessment on this release first; the fix plan is rendered from its findings." tone="neutral" />
       )}
       {plan.isError && (
         <Notice title="The fix plan could not be loaded" body="The plan for this assessment is not available yet. Try again in a moment." action={<Button onClick={() => plan.refetch()}>Retry</Button>} />
       )}
+      {nothing && (
+        <Card className="flex flex-col items-center gap-2 px-6 py-12 text-center" data-testid="fixplan-empty">
+          <CircleCheck className="h-7 w-7 text-satisfied-fg" aria-hidden />
+          <h2 className="text-lg font-medium">Nothing to fix for launch on {versionLabel(version)}</h2>
+          <p className="max-w-md text-sm text-text-2">No requirement is open in this release, so there is no code change or founder action to hand over.</p>
+        </Card>
+      )}
 
-      {parsed && plan.data && (
+      {parsed && plan.data && !nothing && (
         <Tabs.Root value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-          <Tabs.List aria-label="Fix plan sections" className="mb-4 inline-flex h-9 items-center rounded-md border bg-surface-2 p-0.5">
+          <Tabs.List aria-label="Fix plan sections" className="mb-4 inline-flex h-9 max-w-full items-center overflow-x-auto rounded-md border bg-surface-2 p-0.5">
             {([
-              ["agent", "Code items", parsed.sections.filter((s) => s.kind === "code").length],
-              ["founder", "Founder appendix", parsed.sections.filter((s) => s.kind === "appendix").length],
+              ["agent", "Code changes", codeItems.length],
+              ["founder", "Founder actions", actions],
             ] as const).map(([v, label, n]) => (
               <Tabs.Trigger key={v} value={v} data-testid={`fixplan-tab-${v}`}
-                className={cn("h-8 rounded-[6px] px-3 text-sm text-text-2 transition-colors duration-fast data-[state=active]:border data-[state=active]:bg-surface data-[state=active]:text-text data-[state=active]:shadow-sm")}>
-                {label} {v === "agent" && <span className="tnum ml-1 text-text-3">{n}</span>}
+                className={cn("h-8 shrink-0 rounded-[6px] px-3 text-sm text-text-2 transition-colors duration-fast data-[state=active]:border data-[state=active]:bg-surface data-[state=active]:text-text data-[state=active]:shadow-sm")}>
+                {label} <span className="tnum ml-1 text-text-3">{n}</span>
               </Tabs.Trigger>
             ))}
           </Tabs.List>
 
-          <Tabs.Content value="agent" className="space-y-4" data-testid="fixplan-agent">
-            {parsed.sections.filter((s) => s.kind !== "appendix").map((s, i) => (
-              <Card key={i} className="px-5 py-4" data-testid={s.kind === "code" ? "fixplan-item" : `fixplan-${s.kind}`}>
-                <Prose>{s.text}</Prose>
-              </Card>
-            ))}
+          <Tabs.Content value="agent" className="min-w-0 space-y-4" data-testid="fixplan-agent">
+            {parsed.sections.filter((s) => s.kind !== "appendix").map((s, i) => {
+              const check = s.kind === "code" ? checkFor(s.heading) : null;
+              return (
+                <Card key={i} className="min-w-0 overflow-hidden px-4 py-4 sm:px-5" data-testid={s.kind === "code" ? "fixplan-item" : `fixplan-${s.kind}`}>
+                  {check && (
+                    <Link to={check.href} data-testid="fixplan-item-check" className="float-right ml-3 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline">
+                      <span className="font-mono">{check.alias}</span> compliance check <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  )}
+                  <Prose>{s.text}</Prose>
+                </Card>
+              );
+            })}
           </Tabs.Content>
-          <Tabs.Content value="founder" className="space-y-4" data-testid="fixplan-founder">
-            <p className="text-sm text-text-2">Documents and organisational actions for the founder. These are not part of the prompt copied for the coding agent.</p>
+          <Tabs.Content value="founder" className="min-w-0 space-y-4" data-testid="fixplan-founder">
+            <p className="text-sm text-text-2">Documents and organisational actions for the founder. These are not part of the prompt copied for the coding agent. Add a missing document from the <Link className="text-accent hover:underline" to={paths.documents(productId, version)}>Documents</Link> tab.</p>
             {parsed.sections.filter((s) => s.kind === "appendix").map((s, i) => (
-              <Card key={i} className="px-5 py-4"><Prose>{s.text}</Prose></Card>
+              <Card key={i} className="min-w-0 overflow-hidden px-4 py-4 sm:px-5"><Prose>{s.text}</Prose></Card>
             ))}
             {!parsed.sections.some((s) => s.kind === "appendix") && (
               <Card className="px-5 py-8 text-center text-sm text-text-2">No documents or organisational actions are open for this release.</Card>

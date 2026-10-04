@@ -1,55 +1,13 @@
-import { Gavel, Rocket } from "lucide-react";
-import { useSyncExternalStore } from "react";
-import { registerSlot } from "@/lib/slots";
-import { cn } from "@/lib/utils";
+import { setMode, useMode, type Mode } from "@/lib/mode";
 
-export type Persona = "founder" | "counsel";
-const KEY = "cco.persona";
-
-const read = (): Persona => {
-  try { return localStorage.getItem(KEY) === "counsel" ? "counsel" : "founder"; } catch { return "founder"; }
-};
-let current: Persona = read();
-const listeners = new Set<() => void>();
-
-export function setPersona(p: Persona) {
-  current = p;
-  try { localStorage.setItem(KEY, p); } catch { /* ignore */ }
-  listeners.forEach((l) => l());
-}
-export const usePersona = (): Persona =>
-  useSyncExternalStore((l) => (listeners.add(l), () => listeners.delete(l)), () => current, () => "founder");
-
-const OPTIONS: { v: Persona; label: string; Icon: typeof Gavel }[] = [
-  { v: "founder", label: "Founder", Icon: Rocket },
-  { v: "counsel", label: "Counsel", Icon: Gavel },
-];
-
-export function PersonaToggle() {
-  const p = usePersona();
-  return (
-    <div role="radiogroup" aria-label="Persona" className="flex rounded-md border bg-surface p-0.5" data-testid="persona-toggle">
-      {OPTIONS.map(({ v, label, Icon }) => (
-        <button
-          key={v}
-          type="button"
-          role="radio"
-          aria-checked={p === v}
-          data-testid={`persona-${v}`}
-          onClick={() => setPersona(v)}
-          className={cn(
-            "inline-flex h-6 items-center gap-1.5 rounded px-2 text-xs transition-colors duration-fast",
-            p === v ? "bg-accent-soft text-accent" : "text-text-2 hover:text-text",
-          )}
-        >
-          <Icon className="h-3 w-3" aria-hidden />
-          <span className="hidden sm:inline">{label}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
+/**
+ * @deprecated The persona toggle became the Founder | Counsel Mode switch in the top bar (lib/mode.ts).
+ * Kept as a thin alias so older imports keep working; contributes nothing to slots.
+ */
+export type Persona = Mode;
+export const usePersona = useMode;
+export const setPersona = (p: Persona) => setMode(p);
 
 export function register(): void {
-  registerSlot("header.persona", PersonaToggle, { id: "persona" });
+  // The Mode switch lives in app/TopBar.tsx.
 }

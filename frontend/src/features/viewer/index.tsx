@@ -8,6 +8,7 @@ import { useRelease } from "./data";
 export { ArtifactPane, Empty, type ArtifactFocus } from "./ArtifactPane";
 export { MarkdownView } from "./MarkdownView";
 export { CodeView } from "./CodeView";
+export * from "./MarginNotes";
 export * from "./highlight";
 export * from "./data";
 
