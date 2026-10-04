@@ -155,3 +155,12 @@
 - 2026-10-04 15:27 · run · pushed ft/cco-mvp-t18
 - 2026-10-04 15:27 · run · T18 merged into ft/cco-mvp
 - 2026-10-04 15:27 · run · T18 → done — merged; push2 dry run red → T22/T23
+- 2026-10-04 15:28 · run · pushed ft/cco-mvp
+- 2026-10-04 15:28 · run · T22 worktree on ft/cco-mvp-t22
+- 2026-10-04 15:28 · run · T22 → doing
+- 2026-10-04 15:28 · run · T23 worktree on ft/cco-mvp-t23
+- 2026-10-04 15:28 · run · T23 → doing
+- 2026-10-04 15:29 · verify · T22 verify exit 0 (0s)
+- 2026-10-04 15:29 · run · pushed ft/cco-mvp-t22
+- 2026-10-04 15:29 · run · T22 merged into ft/cco-mvp
+- 2026-10-04 15:29 · run · T22 → done — merged; refs pushed; bundles rebuilt

@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd backend && uv run pytest tests/test_review.py tests/test_carry_profile.py tests/test_ci.py -q"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: todo                   # todo | doing | review | done | blocked | skipped
+status: doing                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T23 — Stable carry-forward for not-applicable decisions (profile-scoped)

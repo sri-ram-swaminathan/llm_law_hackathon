@@ -8,7 +8,7 @@ repo: ../FinTechProto
 needs: [cmd:uv]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "! grep -nE 'Account deletion is not yet available|does not ask about your investment knowledge|This is not financial advice' docs/PRODUCT_GUIDE.md"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: todo                   # todo | doing | review | done | blocked | skipped
+status: done                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T22 — FinTechProto — sync product docs with the fixes (rc + v1), rebuild demo refs
