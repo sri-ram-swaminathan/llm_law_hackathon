@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import config
 from .api import (
     assessments,
+    demo,
     findings_read,
     fixplan,
     product,
@@ -40,6 +41,7 @@ ROUTERS = [
     fixplan.router,
     provisions.router,
     search.router,
+    demo.router,
 ]
 
 

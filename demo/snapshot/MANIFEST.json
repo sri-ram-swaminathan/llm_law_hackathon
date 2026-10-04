@@ -1,0 +1,60 @@
+{
+  "product": "wealthpilot",
+  "repo": "RomanGrebnev/FinTechProto",
+  "model": "codestral-latest",
+  "pack_version": "fintech-eu-fr@0.1.0",
+  "captured_at": "2026-10-04T14:44:59+00:00",
+  "acceptance": "matches demo/wealthpilot/expected.yaml (gate + all conclusions); every blocker/high finding has >=1 evidence ref and no validation notes",
+  "counsel_reviews": [
+    {
+      "requirement_id": "AI-TRANSPARENCY-01",
+      "release": "0.9.0",
+      "decision": "not_applicable",
+      "carries_to": [
+        "rc",
+        "1.0.0"
+      ]
+    }
+  ],
+  "releases": [
+    {
+      "key": "0.9.0",
+      "dir": "0.9.0",
+      "version": "0.9.0",
+      "bundle": "demo/wealthpilot/v0.9.0/upload",
+      "repo": "RomanGrebnev/FinTechProto",
+      "ref": "v0.9.0",
+      "commit": "7bf600470665bc5dc2d8838e4fd099ee59ec0eb0",
+      "gate": "NOT_READY",
+      "score": "10/10",
+      "attempts": 1,
+      "run_id": "run-583813c6e3ee"
+    },
+    {
+      "key": "rc",
+      "dir": "1.0.0-rc",
+      "version": "1.0.0-rc.12",
+      "bundle": "demo/wealthpilot/rc/upload",
+      "repo": "RomanGrebnev/FinTechProto",
+      "ref": "demo/rc",
+      "commit": "356a56c49c3c2e273562edc730b82a6f6d76ddc8",
+      "gate": "NOT_READY",
+      "score": "10/10",
+      "attempts": 1,
+      "run_id": "run-e6344601879c"
+    },
+    {
+      "key": "1.0.0",
+      "dir": "1.0.0",
+      "version": "1.0.0",
+      "bundle": "demo/wealthpilot/v1.0.0/upload",
+      "repo": "RomanGrebnev/FinTechProto",
+      "ref": "demo/v1",
+      "commit": "051e4f6e490ab705152b75ff3256ca50a9700297",
+      "gate": "READY",
+      "score": "10/10",
+      "attempts": 1,
+      "run_id": "run-47b43567bdff"
+    }
+  ]
+}
