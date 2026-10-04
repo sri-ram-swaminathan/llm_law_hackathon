@@ -139,7 +139,7 @@ function Blockers({ r, release, findings, idx }: { r: Readiness; release: string
   const rows = (r.blockers ?? []).map((id) => findings?.find((f) => f.requirement_id === id)).filter(Boolean) as NonNullable<typeof findings>;
   return (
     <Card>
-      <CardHeader title="Blockers" right={<span className="tnum text-xs text-text-3">{rows.length}</span>} />
+      <CardHeader title="Blocking launch" right={<span className="tnum text-xs text-text-3">{rows.length}</span>} />
       {rows.length === 0 ? (
         <p className="flex items-center gap-2 px-4 py-6 text-sm text-text-2"><StatusDot status="satisfied" /> No blockers on this release.</p>
       ) : (

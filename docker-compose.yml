@@ -35,6 +35,8 @@ services:
     environment:
       CCO_DATABASE_URL: postgresql+psycopg://cco:cco@db:5432/cco
       CCO_DEPLOY_TOKEN: ${CCO_DEPLOY_TOKEN:-dev-token}
+      CCO_DEMO: "1"
+      CCO_DEMO_DIR: /app/demo
     depends_on:
       db:
         condition: service_healthy
@@ -42,6 +44,7 @@ services:
       - "127.0.0.1:20000:20000"
     volumes:
       - cco-runtime:/app/data/runtime
+      - ./demo:/app/demo:ro
 
   web:
     build:

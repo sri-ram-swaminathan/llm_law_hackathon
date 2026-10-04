@@ -34,6 +34,13 @@ function Panel({ runId }: { runId: string | null }) {
     queryFn: () => http<RunTotals>(`/api/runs/${runId}`),
     enabled: !FIXTURES && !!runId && !streaming && events.length === 0,
   });
+  const runInfo = useQuery({
+    queryKey: ["run-info", runId],
+    queryFn: () => http<{ status?: string }>(`/api/runs/${runId}`),
+    enabled: !FIXTURES && !!runId,
+    staleTime: Infinity,
+  });
+  const live = streaming && runInfo.data?.status === "running";
   const pct = c.ended ? 100 : c.requirementsTotal ? Math.round((c.requirements / c.requirementsTotal) * 100) : 0;
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -49,9 +56,9 @@ function Panel({ runId }: { runId: string | null }) {
         <div className="flex items-center gap-2">
           <span className="grid h-6 w-6 place-items-center rounded-md bg-accent-soft text-accent"><Activity className="h-3.5 w-3.5" /></span>
           <h2 className="text-sm font-medium text-text">Agent activity</h2>
-          <span className={cn("ml-1 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px]", streaming ? "border-satisfied-bd bg-satisfied-bg text-satisfied-fg" : "bg-surface-2 text-text-2")} data-testid="activity-state">
-            <span className={cn("h-1.5 w-1.5 rounded-full bg-current", streaming && "animate-pulse2")} />
-            {streaming ? "Live" : c.ended ? "Completed" : "Idle"}
+          <span className={cn("ml-1 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px]", live ? "border-satisfied-bd bg-satisfied-bg text-satisfied-fg" : "bg-surface-2 text-text-2")} data-testid="activity-state">
+            <span className={cn("h-1.5 w-1.5 rounded-full bg-current", live && "animate-pulse2")} />
+            {live ? "Live" : streaming ? "Replay of recorded run" : c.ended ? "Completed" : "Idle"}
           </span>
           <div className="ml-auto flex items-center gap-1">
             <div role="group" aria-label="Replay speed" className="flex rounded-md border p-0.5">

@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Link, useMatch } from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useMatch, useNavigate } from "react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, Loader2, Play } from "lucide-react";
-import { api, FIXTURES } from "@/api/client";
+import { api, FIXTURES, http } from "@/api/client";
 import { Button } from "@/components/button";
 import { Menu } from "@/components/popover-menu";
 import { Slot } from "@/lib/slots";
@@ -74,6 +74,41 @@ function RunButton({ release }: { release: string | undefined }) {
   );
 }
 
+function StartDemoButton() {
+  const qc = useQueryClient();
+  const nav = useNavigate();
+  const [err, setErr] = useState<string | null>(null);
+  const demo = useQuery({ queryKey: ["demo"], queryFn: () => http<{ enabled: boolean }>("/api/demo"), enabled: !FIXTURES, retry: false });
+  const start = useMutation({
+    mutationFn: () => http<{ run_id: string; release: { id: string } }>("/api/demo/start", { method: "POST" }),
+    onSuccess: (r) => {
+      setErr(null);
+      qc.invalidateQueries();
+      nav(`/r/${r.release.id}/overview`);
+      openActivity(r.run_id);
+    },
+    onError: (e) => setErr(e instanceof Error ? e.message : "Could not start the demo"),
+  });
+  const reset = useMutation({
+    mutationFn: () => http("/api/demo/reset", { method: "POST" }),
+    onSuccess: () => { setErr(null); qc.invalidateQueries(); nav("/r/rel-0.9.0/overview"); },
+    onError: (e) => setErr(e instanceof Error ? e.message : "Could not reset the demo"),
+  });
+  if (!demo.data?.enabled) return null;
+  return (
+    <div className="flex items-center gap-1.5" title={err ?? undefined}>
+      <Button variant="secondary" onClick={() => start.mutate()} disabled={start.isPending || reset.isPending} data-testid="start-demo"
+        title="Ingest Wealthpilot v0.9.0 (FinTechProto tag v0.9.0, with its known flaws) and run a live assessment">
+        {start.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+        Start demo · live v0.9.0
+      </Button>
+      <Button variant="ghost" onClick={() => reset.mutate()} disabled={start.isPending || reset.isPending} data-testid="reset-demo" title="Restore the recorded snapshot of real runs">
+        {reset.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}Reset
+      </Button>
+    </div>
+  );
+}
+
 export function Header() {
   const m = useMatch("/r/:release/*");
   const release = m?.params.release;
@@ -82,7 +117,7 @@ export function Header() {
       <Wordmark />
       <span className="mx-1 hidden h-4 w-px bg-border sm:block" />
       <div className="hidden min-w-0 sm:block"><ReleaseSwitcher current={release} /></div>
-      <div className="hidden md:block"><StagePill /></div>
+      
       <nav className="ml-2 hidden items-center gap-1 text-sm text-text-2 lg:flex" aria-label="Sections">
         {release && [["overview", "Overview"], ["findings", "Findings"], ["evidence", "Evidence"]].map(([p, l]) => (
           <NavLink key={p} to={`/r/${release}/${p}`} label={l} />
@@ -91,7 +126,8 @@ export function Header() {
       </nav>
       <div className="ml-auto flex items-center gap-3">
         <Slot name="header.persona" />
-        <RunButton release={release} />
+        <StartDemoButton />
+        {release && <RunButton release={release} />}
       </div>
     </header>
   );
