@@ -3,12 +3,12 @@ id: T23
 title: Stable carry-forward for not-applicable decisions (profile-scoped)
 kind: work                  # work | verify | gate
 deps: [T14, T16]
-owns: [backend/cco/gate.py, backend/cco/reviews/**, backend/cco/api/reviews.py, backend/cco/cli/ci.py, backend/tests/test_review.py, backend/tests/test_carry_profile.py]                # work only: paths or globs this task may edit
+owns: [backend/cco/api/deps.py, backend/cco/gate.py, backend/cco/reviews/**, backend/cco/api/reviews.py, backend/cco/cli/ci.py, backend/tests/test_review.py, backend/tests/test_carry_profile.py]                # work only: paths or globs this task may edit
 repo: .
 needs: [cmd:uv]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd backend && uv run pytest tests/test_review.py tests/test_carry_profile.py tests/test_ci.py -q"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: doing                   # todo | doing | review | done | blocked | skipped
+status: done                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T23 — Stable carry-forward for not-applicable decisions (profile-scoped)
