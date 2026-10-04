@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# CCOmmit
+data/runtime/
+demo/export/
+node_modules/
+frontend/dist/
+.DS_Store

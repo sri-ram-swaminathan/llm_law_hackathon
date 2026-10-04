@@ -1,0 +1,23 @@
+# Postgres + pgvector for CCOmmit. Host port 20002 (8000/5173/5432 belong to other projects).
+# Start with: make db-up   (compose project name: sdd-cco-mvp)
+name: sdd-cco-mvp
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: cco
+      POSTGRES_PASSWORD: cco
+      POSTGRES_DB: cco
+    ports:
+      - "127.0.0.1:20002:5432"
+    volumes:
+      - cco-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cco -d cco"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  cco-pgdata:
