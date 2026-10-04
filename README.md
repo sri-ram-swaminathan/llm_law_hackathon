@@ -5,6 +5,7 @@
 Every finding quotes the company's own text or code lines next to the official legal text. Release PRs get a GitHub check that comments on the faulty lines.
 
 - **Jury guide** (run it, what works, what doesn't): [docs/JURY.md](docs/JURY.md)
+- **Reproducing the results** (tests, scores, snapshot, legal index, CI red → green): [docs/REPRODUCE.md](docs/REPRODUCE.md)
 - **Live GitHub check** on the demo company: [PR #4](https://github.com/RomanGrebnev/FinTechProto/pull/4)
 - **Demo company code:** [RomanGrebnev/FinTechProto](https://github.com/RomanGrebnev/FinTechProto) (fictional)
 
