@@ -8,7 +8,7 @@ repo: ../FinTechProto
 needs: [gh]
 verify: git -C ../FinTechProto rev-parse -q --verify refs/tags/v0.9.0
 review: none
-status: todo
+status: done
 ---
 
 # G1 — Human: FinTechProto v0.9.0 on `main` + tag

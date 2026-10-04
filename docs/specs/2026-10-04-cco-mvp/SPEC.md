@@ -2,7 +2,7 @@
 title: CCOmmit — AI Chief Compliance Officer MVP
 slug: cco-mvp
 created: 2026-10-04
-status: planned                  # draft → approved → planned → executing → verifying → closed
+status: executing                  # draft → approved → planned → executing → verifying → closed
 size: full                     # lite | full
 base_branch: dev            # asked at the start: main or dev
 integration_branch: ft/cco-mvp
@@ -460,6 +460,17 @@ CI uses it for **review carry-forward** (B1: the W8 decision) and for **changes 
 - CODEOWNERS for `.github/` and `compliance/`.
 - Commit the docs-only `v0.9.0` change and `cco-baseline.json`.
 - The tags and the release-PR merge.
+
+**Replayable demo** (Roman, 4 Oct):
+- **Stable FinTechProto refs, never rewritten:**
+  - `v0.9.0` (pre-fix)
+  - `demo/rc` (partial)
+  - `demo/v1` (post-fix)
+  - `demo/push1`, `demo/push2` (the two PR states)
+- **The live PR** runs on the disposable branches `demo/base` (base) and `demo/release` (head). `main` is untouched.
+- **Reset:** `scripts/demo_reset.sh` resets both branches to `v0.9.0`, closes the PR and deletes `v1.0.0-demo`.
+- **CCOmmit:** `make demo-reset` restores the seeded DB.
+- See T18, G3 and T19.
 
 **Release naming** (computed by `cco audit`):
 - PR run → `<version>-rc.<github.run_number>`.

@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv, cmd:pnpm]
 verify: cd backend && uv run pytest tests/test_contracts.py -q
 review: none
-status: todo
+status: doing
 ---
 
 # T01 — Contracts, fixtures and project skeleton

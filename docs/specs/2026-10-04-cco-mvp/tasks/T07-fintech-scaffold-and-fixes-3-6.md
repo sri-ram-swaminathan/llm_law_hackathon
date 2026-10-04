@@ -8,7 +8,7 @@ repo: ../FinTechProto
 needs: [cmd:uv]
 verify: cd backend && uv run --no-project --with-requirements requirements.txt --with pytest --with httpx python -m pytest -q
 review: none
-status: todo
+status: done
 ---
 
 # T07 — FinTechProto: test scaffold and fix-plan items 3–6
