@@ -8,7 +8,7 @@ repo: .
 needs: []
 verify: test -f docs/specs/2026-10-04-cco-mvp/gates/G2-ui-demo.md
 review: none
-status: todo
+status: done
 ---
 
 # G2 — Human: short UI demo and feedback before wave 3

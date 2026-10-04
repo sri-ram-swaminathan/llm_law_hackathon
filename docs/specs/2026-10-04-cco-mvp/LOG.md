@@ -193,3 +193,5 @@
 - 2026-10-04 16:11 · run · pushed ft/cco-mvp-t25
 - 2026-10-04 16:11 · run · T25 merged into ft/cco-mvp
 - 2026-10-04 16:11 · run · T25 → done — merged; v1.0.0 10/10 x4, v0.9.0 9/10 x2
+- 2026-10-04 16:12 · run · pushed ft/cco-mvp
+- 2026-10-04 16:29 · run · G2 → done — adjust: UI redesign phase (see gate file §7)

@@ -31,4 +31,18 @@
 
 ## 7. Decision
 
-<!-- Roman's words, name, date: go / adjust + list of UI changes for T19 -->
+**ADJUST**: Roman Grebnev, 2026-10-04. His comments, condensed (the full text is in the session):
+
+1. The header's version switcher and stage selector don't belong there. Give a clear entry point: pick the organization/product, enter it, start from there.
+2. Findings / Evidence / Releases don't follow the user-journey sequence.
+3. There's no place to upload a new document (e.g. a new business plan) and have it indexed.
+4. The CI run / PR #1 links are mocked; organize this better.
+5. The tool reads as code-centred. It must equally check the legal documents, the business plan, the terms and clauses, and highlight them there.
+6. The comparison against legal sources must be vivid: clearly company docs + code ↔ the law.
+7. Put the value up front, not hidden.
+8. "Start demo" should check out the flawed version and start the analyzer → risks highlighted by category, codebase analyzed → alerts, highlights, recommendations.
+9. Founder vs Counsel shows no difference. Counsel should be a mode for acting: flagging, reviewing, commenting.
+10. "State-of-the-art UI." Opus for review and implementation. Review → plan → tasks → run. Don't rewrite the backend: rely on it mostly, and take in both critiques.
+
+Two independent UI critiques (Fable on journeys, Opus on clarity) also returned SHIP_WITH_CHANGES; their reports are in the session scratchpad `ui-critique/`.
+Outcome: T19 is replaced by a UI redesign phase (design review → T27+ tasks), plus T26 (a real-run demo snapshot and Start demo).
