@@ -79,6 +79,19 @@ def build_views(
     return out
 
 
+def resolve_previous_release(release: Release, product_releases: Iterable[Release]) -> Release | None:
+    """Baseline for changes_since_previous: the latest earlier release of the same product (so 1.0.0 is
+    compared with the rc, AC7); falls back to the declared previous_release_id."""
+    earlier = [
+        r
+        for r in product_releases
+        if r.product_id == release.product_id and r.id != release.id and r.created_at < release.created_at
+    ]
+    if earlier:
+        return max(earlier, key=lambda r: (r.created_at, r.id))
+    return next((r for r in product_releases if r.id == release.previous_release_id), None)
+
+
 def compute_changes(
     current: list[FindingView], previous: list[FindingView] | None
 ) -> ChangesSinceVersion:
