@@ -2,7 +2,7 @@
 id: V2
 title: Mid check — live run end to end + model spike (before the UI demo)
 kind: verify
-deps: [T08, T09, T10, T11, T12, T13]
+deps: [T08, T09, T10, T11, T12, T13, T20]
 owns: []
 repo: .
 needs: [docker, cmd:pnpm, cmd:uv, env:MISTRAL_API_KEY@.env]

@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv]
 verify: cd backend && uv run pytest tests/test_ingest.py tests/test_security.py -q
 review: none
-status: doing
+status: done
 ---
 
 # T12 — Bundle ingestion, hardening and demo bundles

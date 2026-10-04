@@ -91,3 +91,20 @@
 - 2026-10-04 15:06 · run · T10 → doing
 - 2026-10-04 15:06 · run · T08 → doing
 - 2026-10-04 15:06 · run · T09 → doing
+- 2026-10-04 15:06 · run · pushed ft/cco-mvp
+- 2026-10-04 15:06 · verify · T12 verify exit 0 (1s)
+- 2026-10-04 15:06 · run · pushed ft/cco-mvp-t12
+- 2026-10-04 15:06 · run · T12 merged into ft/cco-mvp
+- 2026-10-04 15:06 · run · T12 → done — merged
+- 2026-10-04 15:08 · verify · T11 verify exit 0 (1s)
+- 2026-10-04 15:08 · run · pushed ft/cco-mvp-t11
+- 2026-10-04 15:08 · run · T11 merged into ft/cco-mvp
+- 2026-10-04 15:08 · run · T11 → done — merged
+- 2026-10-04 15:10 · verify · T09 verify exit 0 (1s)
+- 2026-10-04 15:11 · run · pushed ft/cco-mvp-t09
+- 2026-10-04 15:11 · run · T09 merged into ft/cco-mvp
+- 2026-10-04 15:11 · run · T09 → done — merged
+- 2026-10-04 15:13 · verify · T10 verify exit 0 (2s)
+- 2026-10-04 15:13 · run · pushed ft/cco-mvp-t10
+- 2026-10-04 15:13 · run · T10 merged into ft/cco-mvp
+- 2026-10-04 15:13 · run · T10 → done — merged; live smoke 7/10 match → T20

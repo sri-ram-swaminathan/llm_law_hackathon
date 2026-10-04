@@ -3,12 +3,12 @@ id: T09
 title: Live activity panel, inline counsel review, persona toggle
 kind: work
 deps: [T02, T03]
-owns: [frontend/src/features/activity/**, frontend/src/features/review/**, frontend/src/features/persona/**]
+owns: [frontend/src/features/activity/**, frontend/src/features/review/**, frontend/src/features/persona/**, frontend/e2e/activity.spec.ts]
 repo: .
 needs: [cmd:pnpm]
 verify: cd frontend && pnpm build
 review: none
-status: doing
+status: done
 ---
 
 # T09 — Live activity panel, inline counsel review, persona toggle

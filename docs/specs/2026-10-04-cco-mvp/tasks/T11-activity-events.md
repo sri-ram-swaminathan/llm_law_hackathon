@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv]
 verify: cd backend && uv run pytest tests/test_activity.py -q
 review: none
-status: doing
+status: done
 ---
 
 # T11 — Activity recorder, redaction and SSE events
