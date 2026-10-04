@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:pnpm]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd frontend && pnpm exec tsc -b && pnpm exec vitest run src/features && pnpm exec playwright test golden-path.spec.ts check.spec.ts"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: todo                   # todo | doing | review | done | blocked | skipped
+status: doing                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T37 — Release story — workspace + product home, Summary, Risks, Compliance check

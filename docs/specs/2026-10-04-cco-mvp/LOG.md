@@ -230,3 +230,7 @@
 - 2026-10-04 16:56 · run · pushed ft/cco-mvp-t27
 - 2026-10-04 16:56 · run · T27 merge conflict: frontend/src/app/Header.tsx
 - 2026-10-04 16:57 · run · T27 → done — merged (Header.tsx conflict → T27 TopBar; Start demo moves to T38)
+- 2026-10-04 16:57 · run · T37 worktree on ft/cco-mvp-t37
+- 2026-10-04 16:57 · run · T37 → doing
+- 2026-10-04 16:57 · run · T38 worktree on ft/cco-mvp-t38
+- 2026-10-04 16:57 · run · T38 → doing
