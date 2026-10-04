@@ -32,4 +32,4 @@ _Checked 2026-10-04 14:00 by `sdd preflight --basic`. Values are never shown._
 
 - `env:LEGIFRANCE_CLIENT_ID` / `env:LEGIFRANCE_CLIENT_SECRET`: present, but PISTE OAuth returns `invalid_client` (both servers, both orders). The Client ID is still needed from Roman. **Waived for the start:** French provisions are served from the corpus cache.
 - `env:MISTRAL_API_KEY`: works for `codestral-latest`, `ministral-8b-latest`, `open-mistral-nemo` and `mistral-embed`. Medium, small, large and OCR have no quota. **Waived:** the spec uses the available models (§3).
-- `../FinTechProto`: `docs/product.md` is untracked there. It has to be committed to its `main` by a human, before the `v0.9.0` tag.
+- `../FinTechProto`: `main` is now `dbb8e64` (product guide + technical architecture). The untracked local `docs/product.md` is superseded and not committed. The repo owner must add secrets and branch protection (Roman has write, not admin).
