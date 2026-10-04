@@ -201,3 +201,14 @@
 - 2026-10-04 16:39 · run · T26 → doing
 - 2026-10-04 16:39 · run · T28 worktree on ft/cco-mvp-t28
 - 2026-10-04 16:39 · run · T28 → doing
+- 2026-10-04 16:41 · run · pushed ft/cco-mvp
+- 2026-10-04 16:41 · run · T27 worktree on ft/cco-mvp-t27
+- 2026-10-04 16:41 · run · T27 → doing
+- 2026-10-04 16:45 · verify · T28 verify exit 0 (2s)
+- 2026-10-04 16:45 · run · pushed ft/cco-mvp-t28
+- 2026-10-04 16:45 · run · T28 merged into ft/cco-mvp
+- 2026-10-04 16:45 · run · T28 → done — merged; review on PR #1 posted (0 inline: refs outside diff)
+- 2026-10-04 16:47 · verify · T26 verify exit 0 (1s)
+- 2026-10-04 16:47 · run · pushed ft/cco-mvp-t26
+- 2026-10-04 16:47 · run · T26 merged into ft/cco-mvp
+- 2026-10-04 16:47 · run · T26 → done — merged; snapshot 10/10 x3 first attempt; demo endpoints

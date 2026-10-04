@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv, env:MISTRAL_API_KEY@.env]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd backend && uv run pytest tests/test_seed_snapshot.py -q"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: doing                   # todo | doing | review | done | blocked | skipped
+status: done                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T26 — Real-run demo snapshot — reset restores validated live runs, no hand-written findings
