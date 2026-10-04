@@ -234,3 +234,11 @@
 - 2026-10-04 16:57 · run · T37 → doing
 - 2026-10-04 16:57 · run · T38 worktree on ft/cco-mvp-t38
 - 2026-10-04 16:57 · run · T38 → doing
+- 2026-10-04 17:11 · verify · T37 verify exit 0 (10s)
+- 2026-10-04 17:11 · run · pushed ft/cco-mvp-t37
+- 2026-10-04 17:11 · run · T37 merged into ft/cco-mvp
+- 2026-10-04 17:11 · run · T37 → done — merged
+- 2026-10-04 17:12 · verify · T38 verify exit 0 (9s)
+- 2026-10-04 17:12 · run · pushed ft/cco-mvp-t38
+- 2026-10-04 17:12 · run · T38 merged into ft/cco-mvp
+- 2026-10-04 17:12 · run · T38 → done — merged

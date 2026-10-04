@@ -13,4 +13,4 @@ COPY contracts /app/contracts
 RUN mkdir -p /app/data/runtime && chown -R cco:cco /app/data/runtime
 USER cco
 EXPOSE 20000
-CMD ["sh", "-c", "python -m cco.seed && exec uvicorn cco.main:app --host 0.0.0.0 --port 20000 --workers 1"]
+CMD ["sh", "-c", "python -m cco.seed && if [ \"$CCO_DEMO\" = 1 ] && [ -f \"${CCO_DEMO_DIR:-/app/demo}/snapshot/MANIFEST.json\" ]; then python -m cco.demo reset; fi && exec uvicorn cco.main:app --host 0.0.0.0 --port 20000 --workers 1"]
