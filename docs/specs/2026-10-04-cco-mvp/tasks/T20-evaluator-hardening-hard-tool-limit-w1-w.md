@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv, env:MISTRAL_API_KEY@.env]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd backend && uv run pytest tests/test_evaluator.py tests/test_hardening.py -q"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: todo                   # todo | doing | review | done | blocked | skipped
+status: doing                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T20 — Evaluator hardening — hard tool limit, W1/W6/W8 accuracy

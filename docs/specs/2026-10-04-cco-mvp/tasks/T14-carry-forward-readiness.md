@@ -3,12 +3,12 @@ id: T14
 title: Review carry-forward, changes since previous, reviews API
 kind: work
 deps: [T10]
-owns: [backend/cco/gate.py, backend/cco/reviews/**, backend/cco/api/reviews.py, backend/tests/test_review.py, backend/tests/test_readiness.py]
+owns: [backend/cco/api/deps.py, backend/cco/gate.py, backend/cco/reviews/**, backend/cco/api/reviews.py, backend/tests/test_review.py, backend/tests/test_readiness.py]
 repo: .
 needs: [cmd:uv]
 verify: cd backend && uv run pytest tests/test_review.py tests/test_readiness.py -q
 review: none
-status: todo
+status: done
 ---
 
 # T14 — Review carry-forward, changes since previous, reviews API

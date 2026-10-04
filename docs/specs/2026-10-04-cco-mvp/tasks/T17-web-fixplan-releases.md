@@ -3,12 +3,12 @@ id: T17
 title: Web — fix-plan preview, releases (upload/import), profile form, What changed
 kind: work
 deps: [T08, T09, T12]
-owns: [frontend/src/features/fixplan/**, frontend/src/features/releases/**, frontend/src/features/profile/**]
+owns: [frontend/src/features/fixplan/**, frontend/src/features/releases/**, frontend/src/features/profile/**, frontend/e2e/releases.spec.ts]
 repo: .
 needs: [cmd:pnpm]
 verify: cd frontend && pnpm build
 review: none
-status: todo
+status: done
 ---
 
 # T17 — Web: fix-plan preview, releases (upload/import), profile form, What changed

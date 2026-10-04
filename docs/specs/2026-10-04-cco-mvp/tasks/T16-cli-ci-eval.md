@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv]
 verify: cd backend && uv run pytest tests/test_ci.py -q
 review: none
-status: todo
+status: done
 ---
 
 # T16 — `cco audit` / `import` / `export-baseline`, PR comment, eval harness

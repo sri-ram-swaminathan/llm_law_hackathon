@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv]
 verify: cd backend && uv run pytest tests/test_fix_plan.py tests/test_mcp.py -q
 review: none
-status: todo
+status: done
 ---
 
 # T15 — Deterministic fix-plan renderer and MCP server (4 tools)

@@ -3,12 +3,12 @@ id: T08
 title: Finding workspace, document/code viewer with highlights, legal drawer
 kind: work
 deps: [T02, T03, T04]
-owns: [frontend/src/features/finding/**, frontend/src/features/viewer/**, frontend/src/features/legal/**, frontend/src/features/evidence/**]
+owns: [frontend/src/features/finding/**, frontend/src/features/viewer/**, frontend/src/features/legal/**, frontend/src/features/evidence/**, frontend/e2e/finding.spec.ts]
 repo: .
 needs: [cmd:pnpm]
 verify: cd frontend && pnpm build
 review: none
-status: doing
+status: done
 ---
 
 # T08 — Finding workspace, document/code viewer with highlights, legal drawer
