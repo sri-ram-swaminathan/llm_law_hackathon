@@ -2,7 +2,7 @@
 id: VA
 title: Acceptance — AC1–AC14 and the full demo script
 kind: verify
-deps: [T19, G3]
+deps: [T19, T21, G3]
 owns: []
 repo: .
 needs: [docker, cmd:pnpm, cmd:uv, env:MISTRAL_API_KEY@.env]

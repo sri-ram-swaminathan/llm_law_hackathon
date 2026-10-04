@@ -140,3 +140,6 @@
 - 2026-10-04 15:20 · run · pushed ft/cco-mvp-t17
 - 2026-10-04 15:20 · run · T17 merged into ft/cco-mvp
 - 2026-10-04 15:20 · run · T17 → done — merged
+- 2026-10-04 15:20 · run · pushed ft/cco-mvp
+- 2026-10-04 15:20 · run · T18 worktree on ft/cco-mvp-t18
+- 2026-10-04 15:20 · run · T18 → doing
