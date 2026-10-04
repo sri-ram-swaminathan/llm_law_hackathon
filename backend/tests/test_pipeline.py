@@ -87,7 +87,7 @@ def test_full_run_scripted(sm, release):
     assert asm.status == "completed" and len(findings) == len(reqs)
     na = [f for f in findings if f.conclusion == "not_applicable"]
     assert set(calls).isdisjoint({f.requirement_id for f in na}), "no model call for out-of-scope"
-    assert len(calls) == len(findings) - len(na)
+    assert len(set(calls)) == len(findings) - len(na)  # code-evidence retries (T36) may call a requirement more than once
     for f in findings:
         assert f.severity == reqs[f.requirement_id].severity
         assert len(f.evidence_fingerprint) == 64
