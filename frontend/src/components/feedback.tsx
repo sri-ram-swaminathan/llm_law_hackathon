@@ -1,3 +1,4 @@
+import { isPendingAssessment } from "@/lib/queries";
 import { CircleCheck, FlaskConical, Info, OctagonAlert, RotateCw, SearchX, TriangleAlert, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
@@ -39,6 +40,13 @@ export function Banner({ tone = "info", title, children, action, icon, className
 export function ErrorBanner({ error, onRetry, title = "This couldn't be loaded", className }: {
   error: unknown; onRetry?: () => void; title?: string; className?: string;
 }) {
+  if (isPendingAssessment(error)) {
+    return (
+      <Banner tone="info" title="Live assessment in progress" className={className}>
+        The agent is checking this release against the regulatory pack right now. Results appear here as soon as it finishes, usually within 20 seconds. Open the Activity tab to watch it work.
+      </Banner>
+    );
+  }
   return (
     <Banner tone="error" title={title} className={className}
       action={onRetry && <Button size="sm" variant="secondary" onClick={onRetry}><RotateCw className="h-3.5 w-3.5" /> Retry</Button>}>

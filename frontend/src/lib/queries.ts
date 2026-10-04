@@ -34,13 +34,17 @@ export const useProduct = () => useQuery({ queryKey: qk.product, queryFn: api.pr
 export const useReleases = () => useQuery({ queryKey: qk.releases, queryFn: api.releases });
 export const useRelease = (id: string | undefined) =>
   useQuery({ queryKey: qk.release(id ?? ""), queryFn: () => api.release(id!), enabled: !!id });
+/** A release whose first assessment is still running answers 404 "no completed assessment": poll until it lands. */
+export const isPendingAssessment = (e: unknown) =>
+  !!e && (e as { status?: number }).status === 404 && /no completed assessment/i.test(String((e as { detail?: unknown }).detail ?? (e as Error).message ?? ""));
+const pollWhilePending = { retry: false, refetchInterval: (q: { state: { error: unknown } }) => (isPendingAssessment(q.state.error) ? 2000 : false) } as const;
 export const useReadiness = (rel: string | undefined) =>
-  useQuery({ queryKey: qk.readiness(rel ?? ""), queryFn: () => api.readiness(rel!), enabled: !!rel });
+  useQuery({ queryKey: qk.readiness(rel ?? ""), queryFn: () => api.readiness(rel!), enabled: !!rel, ...pollWhilePending });
 /** Readiness for several releases at once (timeline, version popover). Same cache entries as `useReadiness`. */
 export const useReadinessMany = (ids: string[]) =>
   useQueries({ queries: ids.map((id) => ({ queryKey: qk.readiness(id), queryFn: () => api.readiness(id) })) });
 export const useFindings = (rel: string | undefined) =>
-  useQuery({ queryKey: qk.findings(rel ?? ""), queryFn: () => api.findings(rel!), enabled: !!rel });
+  useQuery({ queryKey: qk.findings(rel ?? ""), queryFn: () => api.findings(rel!), enabled: !!rel, ...pollWhilePending });
 export const useFinding = (fid: string | undefined) =>
   useQuery({ queryKey: qk.finding(fid ?? ""), queryFn: () => api.finding(fid!), enabled: !!fid });
 export const useProvisions = (ids: string[]) =>
