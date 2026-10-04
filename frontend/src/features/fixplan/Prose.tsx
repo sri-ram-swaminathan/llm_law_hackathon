@@ -16,7 +16,7 @@ const components: Components = {
   li: ({ node: _n, className, ...p }) => <li className={cn("leading-relaxed", className?.includes("task-list-item") && "flex items-start gap-2")} {...p} />,
   input: ({ node: _n, ...p }) => <input {...p} className="mt-1 h-3.5 w-3.5 shrink-0 accent-[var(--accent)]" readOnly />,
   blockquote: ({ node: _n, ...p }) => (
-    <blockquote className="my-3 rounded-md border bg-surface-2 px-4 py-2 text-sm text-text-2 [&_p]:my-1 [&_p]:text-text-2 [&_strong]:text-text" {...p} />
+    <blockquote className="my-3 rounded-md border bg-surface-2 px-4 py-2 text-sm text-text-2 [&_p]:my-1 [&_p]:whitespace-pre-line [&_p]:text-text-2 [&_strong]:text-text" {...p} />
   ),
   hr: () => <hr className="my-5 border-t" />,
   code: ({ node: _n, className, ...p }) => (
