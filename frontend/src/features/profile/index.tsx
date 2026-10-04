@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BadgeCheck, CircleDashed, Loader2, Plus, X } from "lucide-react";
 import { useEffect, useState, type KeyboardEvent } from "react";
-import { FIXTURES, http } from "@/api/client";
+import { api } from "@/api/client";
 import type { components } from "@/api/types";
 import { Button } from "@/components/button";
 import { Card, CardHeader, Skeleton } from "@/components/card";
-import { Notice } from "@/features/fixplan";
+import { ErrorBanner } from "@/components/feedback";
 import { cn } from "@/lib/utils";
 
 type ProductOut = components["schemas"]["ProductOut"];
@@ -13,33 +13,8 @@ type Profile = components["schemas"]["RegulatoryProfile"];
 
 /* ---------------- data (fixtures keep state in memory) ---------------- */
 
-let fixtureProduct: ProductOut = {
-  product: { id: "wealthpilot", organization_id: "fintechproto", name: "Wealthpilot", description: "AI investment insights for French retail investors" },
-  profile: {
-    jurisdictions: ["EU", "FR"],
-    industry: "Fintech: investment advice",
-    activities: ["Personalised investment recommendations", "Portfolio tracking", "Onboarding with risk profiling"],
-    customer_types: ["Retail investors (consumers)"],
-    data_categories: ["Identity and contact data", "Financial situation and goals", "Portfolio holdings", "Account credentials"],
-    ai_uses: ["LLM-generated investment recommendations", "AI-generated market summaries"],
-    stage: "pre-launch",
-    confirmed_at: null,
-  },
-};
-
-const getProduct = async (): Promise<ProductOut> => {
-  if (FIXTURES) { await new Promise((r) => setTimeout(r, 60)); return fixtureProduct; }
-  return http<ProductOut>("/api/product");
-};
-const putProfile = async (p: Profile): Promise<ProductOut> => {
-  if (FIXTURES) {
-    await new Promise((r) => setTimeout(r, 300));
-    fixtureProduct = { ...fixtureProduct, profile: { ...p, confirmed_at: new Date().toISOString() } };
-    return fixtureProduct;
-  }
-  const res = await http<ProductOut | Profile>("/api/product/profile", { method: "PUT", body: JSON.stringify(p) });
-  return "profile" in res ? res : { ...(await getProduct()), profile: res };
-};
+const getProduct = api.product;
+const putProfile = api.updateProfile;
 
 const STAGES = ["pre-launch", "operating", "scaling"];
 const stageLabel = (s: string) => s.replace(/^./, (c) => c.toUpperCase());
@@ -77,7 +52,7 @@ export function ProfilePage() {
       </div>
 
       {q.isLoading && <div className="space-y-3" aria-busy="true"><Skeleton className="h-16" /><Skeleton className="h-72" /></div>}
-      {q.isError && <Notice title="The profile could not be loaded" body="Check that the backend is running, then try again." action={<Button onClick={() => q.refetch()}>Retry</Button>} />}
+      {q.isError && <ErrorBanner title="The profile could not be loaded" error={q.error} onRetry={() => q.refetch()} />}
 
       {q.data && draft && (
         <form onSubmit={(e) => { e.preventDefault(); save.mutate(draft); }} data-testid="profile-form">
