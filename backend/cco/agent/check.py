@@ -72,7 +72,7 @@ async def run(ref: str, model_name: str | None, only: set[str], concurrency: int
     async def one(sr):
         req = sr.requirement
         if not sr.applicable:
-            return req, "not_applicable", 0, 0, []
+            return req, "not_applicable", 0, 0, [], []
         bundle = EvidenceBundle(root=root, artifacts=docs, code_artifact_id=code_art.id if code_art else "code",
                                 provisions=_provisions_for(req))
         if trace:
@@ -83,7 +83,8 @@ async def run(ref: str, model_name: str | None, only: set[str], concurrency: int
             res = await evaluate_requirement(req, bundle, model=model)
         if trace:
             print(f"----- {req.alias}: {res.candidate.reasoning_summary}")
-        return req, res.candidate.conclusion, res.tool_calls, res.attempts, res.validation_notes
+        refs = [f"{e.path}:{e.start_line}" for e in res.candidate.evidence if e.type == "code"]
+        return req, res.candidate.conclusion, res.tool_calls, res.attempts, res.validation_notes, refs
 
     results = [r for r in scope(seed.PROFILE, load_pack())]
     if only:
@@ -91,7 +92,7 @@ async def run(ref: str, model_name: str | None, only: set[str], concurrency: int
     rows = await asyncio.gather(*(one(r) for r in results))
 
     ok = 0
-    for req, got, tools, attempts, notes in sorted(rows, key=lambda r: r[0].alias):
+    for req, got, tools, attempts, notes, refs in sorted(rows, key=lambda r: r[0].alias):
         alias, want = expected[req.id]
         match = got == want
         if key == "1.0.0" and alias == "C1":
@@ -100,7 +101,7 @@ async def run(ref: str, model_name: str | None, only: set[str], concurrency: int
             match = got in ("uncertain", "not_applicable")
         ok += match
         print(f"{alias:3} {req.id:28} got={got:22} want={want:22} {'OK ' if match else 'MISMATCH'} "
-              f"tools={tools} attempts={attempts}")
+              f"tools={tools} attempts={attempts} code={','.join(refs) or '-'}")
         if not match and notes:
             print("     notes:", " | ".join(notes)[:400])
     print(f"SCORE {ok}/{len(rows)}")
