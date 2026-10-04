@@ -9,7 +9,7 @@ WEB_PORT ?= 20001
 export CCO_DATABASE_URL ?= postgresql+psycopg://cco:cco@127.0.0.1:20002/cco
 FIXTURE_REL ?= 0.9.0
 
-.PHONY: dev api web db-up db-down seed demo-reset demo-bundles demo-export types contracts-check test verify-w2 acceptance up down logs
+.PHONY: dev api web db-up db-down seed demo-reset demo-snapshot demo-bundles demo-export types contracts-check test verify-w2 acceptance up down logs
 
 dev: ## API on :20000 and web on :20001 (Ctrl-C stops both)
 	@trap 'kill 0' INT TERM EXIT; \
@@ -32,10 +32,12 @@ db-down:
 seed: ## load fixtures (releases, assessments, events, W8 review) into the database
 	cd backend && uv run python -m cco.seed
 
-demo-reset: ## drop the database and re-seed
-	$(COMPOSE) down -v
+demo-reset: ## restore the demo: demo/snapshot (validated live runs) if MANIFEST.json exists, else the fixtures
 	$(COMPOSE) up -d --wait db
-	cd backend && uv run python -m cco.seed
+	cd backend && uv run python -m cco.demo reset
+
+demo-snapshot: ## re-capture demo/snapshot from live runs (cco audit x3, checked against expected.yaml)
+	bash scripts/demo_snapshot.sh
 
 demo-bundles: ## ready-to-upload bundles from FinTechProto tags
 	bash scripts/demo_bundles.sh

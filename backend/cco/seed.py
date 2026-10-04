@@ -73,6 +73,8 @@ def seed(s: Session, fixtures_dir: Path | None = None) -> dict[str, int]:
     for fname in RELEASE_FILES:
         f = ReleaseFixture.model_validate_json((fx / fname).read_text())
         rel = f.release
+        if rel.source == "ci":  # fixture CI links are illustrative, not real runs: never show them as provenance
+            rel = rel.model_copy(update={"source": "seed", "ci_run_url": None, "pr_number": None})
         s.merge(ReleaseRow(id=rel.id, product_id=rel.product_id, version=rel.version,
                            created_at=rel.created_at.isoformat() if rel.created_at else "", data=_j(rel)))
         for a in f.artifacts:
@@ -105,10 +107,21 @@ def seed(s: Session, fixtures_dir: Path | None = None) -> dict[str, int]:
     return n
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    import argparse
+
+    ap = argparse.ArgumentParser(prog="python -m cco.seed")
+    ap.add_argument("--snapshot", type=Path, default=None,
+                    help="restore validated live runs from this snapshot dir (demo/snapshot) instead of fixtures")
+    a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO)
     with session_scope() as s:
-        counts = seed(s)
+        if a.snapshot is not None:
+            from .demo import restore
+
+            counts = restore(s, a.snapshot.resolve())
+        else:
+            counts = seed(s)
     print("seeded:", counts)
 
 
