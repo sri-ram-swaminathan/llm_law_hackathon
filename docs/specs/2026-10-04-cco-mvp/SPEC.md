@@ -2,7 +2,7 @@
 title: CCOmmit — AI Chief Compliance Officer MVP
 slug: cco-mvp
 created: 2026-10-04
-status: draft                  # draft → approved → planned → executing → verifying → closed
+status: approved                  # draft → approved → planned → executing → verifying → closed
 size: full                     # lite | full
 base_branch: main           # asked at the start: main or dev
 integration_branch: ft/cco-mvp
@@ -81,6 +81,8 @@ Success, for this hackathon: on stage, a fintech's release is shown **not ready 
     - The **quote locator is tolerant**: it compares against two normalized forms (whitespace collapsed; string-literal joins and quote characters removed). About a third of the test quotes joined Python strings that were split across lines.
 - **Frontend:** React + Vite + TypeScript + Tailwind + shadcn/ui, with a custom design.
 - **Process:** SDD. **Opus** plans, specs and verifies; **Sonnet** implements.
+  - **Fast mode** (Roman, 4 Oct): checks run **only at the end of each wave** (verify tasks + wave gate). Work tasks use `review: none`; their own `verify` command is enough to merge. Parallel subagents run on Sonnet with tight briefs: task file + owned paths + contracts only.
+  - **Document viewer:** the evidence viewer with inline highlights (Markdown documents and code, click a highlight → its finding) is core V1 (§6.7, AC2, AC11).
 - **Legal sources:**
   - CELLAR is public and works: SPARQL by CELEX, and REST by CELEX for the full XHTML text.
   - The eur-lex.europa.eu pages return a bot-challenge 202, and legifrance.gouv.fr pages return a Cloudflare 403, so neither can be scraped.
