@@ -42,11 +42,23 @@ def _entropy_sub(m: re.Match) -> str:
     return tok
 
 
+_ENV_LOOKUP = re.compile(r"(?i)^(os\.|process\.env|getenv|environ|settings\.|config\.|import\.meta\.env)")
+
+
+def _assign_sub(m: re.Match) -> str:
+    value = m.group(2)
+    # Code that *reads* a secret (os.getenv(...), settings.X, f(...)) is not a secret value: keep it,
+    # otherwise evidence like `secret = os.getenv("JWT_SECRET", "")` turns into a fake hard-coded secret.
+    if "(" in value or "[" in value or _ENV_LOOKUP.match(value):
+        return m.group(0)
+    return m.group(1) + REDACTED
+
+
 def redact(text: str) -> str:
     if not text:
         return text
     for p in _PATTERNS:
         text = p.sub(REDACTED, text)
     text = _URL_CREDS.sub(lambda m: m.group(1) + REDACTED + "@", text)
-    text = _ASSIGN.sub(lambda m: m.group(1) + REDACTED, text)
+    text = _ASSIGN.sub(_assign_sub, text)
     return _CANDIDATE.sub(_entropy_sub, text)
