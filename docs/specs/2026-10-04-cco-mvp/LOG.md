@@ -221,3 +221,12 @@
 - 2026-10-04 16:55 · run · T32 → skipped — compressed into T37/T38 (founder: 3 tasks)
 - 2026-10-04 16:55 · run · T35 → skipped — compressed into T37/T38 (founder: 3 tasks)
 - 2026-10-04 16:55 · run · T33 → skipped — compressed into T37/T38 (founder: 3 tasks)
+- 2026-10-04 16:55 · run · pushed ft/cco-mvp
+- 2026-10-04 16:56 · run · pushed ft/cco-mvp-t36
+- 2026-10-04 16:56 · verify · T36 verify exit 0 (2s)
+- 2026-10-04 16:56 · run · T36 merged into ft/cco-mvp
+- 2026-10-04 16:56 · run · T36 → done — merged; W1/W2 cite code 4/4 live runs, 10/10
+- 2026-10-04 16:56 · verify · T27 verify exit 0 (16s)
+- 2026-10-04 16:56 · run · pushed ft/cco-mvp-t27
+- 2026-10-04 16:56 · run · T27 merge conflict: frontend/src/app/Header.tsx
+- 2026-10-04 16:57 · run · T27 → done — merged (Header.tsx conflict → T27 TopBar; Start demo moves to T38)

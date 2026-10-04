@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv, env:MISTRAL_API_KEY@.env]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd backend && uv run pytest tests/test_code_evidence.py tests/test_evaluator.py tests/test_validation.py -q"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: doing                   # todo | doing | review | done | blocked | skipped
+status: done                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T36 — Evaluator — violations on code-backed requirements must cite code (validation retry)
