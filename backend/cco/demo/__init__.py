@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from .. import config, gate, pipeline
@@ -140,6 +140,25 @@ def restore(s: Session, snapshot_dir: Path | None = None, exclude: list[str] | t
     return {"releases": restored, "reviews": int(w8_finding is not None)}
 
 
+def _make_first(s: Session, release_id: str) -> None:
+    """The live v0.9.0 is ingested last but is the first release: no baseline, ordered before rc and 1.0.0,
+    and the oldest remaining release now diffs against it (otherwise "What changed" compares 0.9.0 to 1.0.0)."""
+    from datetime import datetime, timedelta
+
+    from ..models import ReleaseRow
+
+    rows = [r for r in s.scalars(select(ReleaseRow).where(ReleaseRow.product_id == PRODUCT.id)) if r.id != release_id]
+    me = s.get(ReleaseRow, release_id)
+    if me is None or not rows:
+        return
+    oldest = min(rows, key=lambda r: r.created_at)
+    first_at = (datetime.fromisoformat(oldest.created_at) - timedelta(days=1)).isoformat()
+    me.created_at = first_at
+    me.data = {**me.data, "created_at": first_at, "previous_release_id": None}
+    oldest.data = {**oldest.data, "previous_release_id": release_id}
+    s.flush()
+
+
 def start(sm: sessionmaker[Session], snapshot_dir: Path | None = None) -> dict[str, Any]:
     """Restore rc + 1.0.0, ingest v0.9.0 with real provenance and queue a live assessment.
     Raises pipeline.RunInFlight when a run is going. The caller schedules pipeline.execute_run(sm, prep)."""
@@ -153,6 +172,7 @@ def start(sm: sessionmaker[Session], snapshot_dir: Path | None = None) -> dict[s
     with sm() as s:
         restore(s, snapshot_dir, exclude=["0.9.0"])
         release = ingest_release(s, rel, source="ui")  # started from the UI, on the real v0.9.0 commit
+        _make_first(s, release.id)
         s.commit()
     prep = pipeline.prepare_run(sm, release.id)
     return {"release": release, "prep": prep,
