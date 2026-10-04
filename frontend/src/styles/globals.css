@@ -13,12 +13,15 @@
   --uncertain-fg: #7c4dcc; --uncertain-bg: #f2ecfc; --uncertain-bd: #d9c9f2;
   --satisfied-fg: #117a4b; --satisfied-bg: #e6f6ee; --satisfied-bd: #b3e1c9;
   --na-fg: #6b7080; --na-bg: #eff0f3; --na-bd: #dcdee4;
+  --counsel-fg: #0f766e; --counsel-bg: #e6f5f3; --counsel-bd: #b5e0da;
+  --law-font: "Source Serif 4", Georgia, "Times New Roman", serif;
   --shadow-overlay: 0 8px 24px rgba(16, 18, 27, 0.12);
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --dur-fast: 120ms; --dur-base: 200ms; --dur-slow: 320ms;
   color-scheme: light;
 }
-[data-theme="dark"] {
+/* Dark: explicit choice, or the system preference unless the user picked Light. Keep both blocks identical. */
+:root[data-theme="dark"] {
   --bg: #0b0c0f; --surface: #121318; --surface-2: #1a1c23; --border: #262932;
   --text: #ecedf1; --text-2: #a1a5b1; --text-3: #6f7380;
   --accent: #818cf8; --accent-soft: #1e2140;
@@ -29,8 +32,26 @@
   --uncertain-fg: #b79cf2; --uncertain-bg: #1d1530; --uncertain-bd: #36285a;
   --satisfied-fg: #4cc38a; --satisfied-bg: #0e2219; --satisfied-bd: #1a4a33;
   --na-fg: #9096a6; --na-bg: #1b1d24; --na-bd: #2c2f39;
+  --counsel-fg: #2dd4bf; --counsel-bg: #0d2421; --counsel-bd: #1a4a43;
   --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b0c0f; --surface: #121318; --surface-2: #1a1c23; --border: #262932;
+    --text: #ecedf1; --text-2: #a1a5b1; --text-3: #6f7380;
+    --accent: #818cf8; --accent-soft: #1e2140;
+    --blocker-fg: #f27085; --blocker-bg: #2a1318; --blocker-bd: #4a2029;
+    --high-fg: #f59a57; --high-bg: #2a1b0f; --high-bd: #4a3019;
+    --medium-fg: #e3b341; --medium-bg: #262010; --medium-bd: #443a18;
+    --evidence-fg: #6ea8fe; --evidence-bg: #111e33; --evidence-bd: #1e3556;
+    --uncertain-fg: #b79cf2; --uncertain-bg: #1d1530; --uncertain-bd: #36285a;
+    --satisfied-fg: #4cc38a; --satisfied-bg: #0e2219; --satisfied-bd: #1a4a33;
+    --na-fg: #9096a6; --na-bg: #1b1d24; --na-bd: #2c2f39;
+    --counsel-fg: #2dd4bf; --counsel-bg: #0d2421; --counsel-bd: #1a4a43;
+    --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
 }
 
 html, body, #root { height: 100%; }
@@ -51,3 +72,16 @@ body {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
 }
+
+/* Law text reads in serif; company text stays in sans (DESIGN §5). */
+.font-law { font-family: var(--law-font); }
+
+/* Counsel mode frame: a 2px teal rule across the top of the viewport. */
+body[data-mode="counsel"]::before {
+  content: ""; position: fixed; inset: 0 0 auto 0; height: 2px; z-index: 60;
+  background: var(--counsel-fg); pointer-events: none;
+}
+
+/* Horizontal scrollers (mobile tabs) without a visible scrollbar. */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

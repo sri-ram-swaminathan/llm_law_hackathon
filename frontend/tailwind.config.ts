@@ -9,7 +9,8 @@ const status = (n: string) => ({
 
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
-  darkMode: ["selector", '[data-theme="dark"]'],
+  // dark: explicit [data-theme=dark], or the system preference unless the user picked light
+  darkMode: ["variant", ['&:is([data-theme="dark"] *)', '@media (prefers-color-scheme: dark) { &:not([data-theme="light"] *) }']],
   theme: {
     extend: {
       colors: {
@@ -25,9 +26,11 @@ export default {
         uncertain: status("uncertain"),
         satisfied: status("satisfied"),
         na: status("na"),
+        counsel: status("counsel"),
       },
       fontFamily: {
         sans: ['"Geist"', "system-ui", "-apple-system", '"Segoe UI"', "sans-serif"],
+        law: ['"Source Serif 4"', "Georgia", '"Times New Roman"', "serif"],
         mono: ['"Geist Mono"', "ui-monospace", '"SF Mono"', "Menlo", "monospace"],
       },
       fontSize: {
@@ -35,11 +38,13 @@ export default {
         sm: ["13px", "20px"],
         base: ["14px", "22px"],
         lg: ["16px", { lineHeight: "24px", fontWeight: "600" }],
-        xl: ["20px", { lineHeight: "28px", fontWeight: "600" }],
+        xl: ["20px", { lineHeight: "28px", fontWeight: "600", letterSpacing: "-0.01em" }],
         "2xl": ["28px", { lineHeight: "34px", fontWeight: "600", letterSpacing: "-0.01em" }],
+        gate: ["40px", { lineHeight: "44px", fontWeight: "600", letterSpacing: "-0.02em" }],
         code: ["12.5px", "20px"],
       },
-      borderRadius: { sm: "4px", md: "8px", lg: "12px" },
+      // 6px cards, 4px chips (DESIGN §5)
+      borderRadius: { sm: "4px", md: "6px", lg: "10px" },
       transitionTimingFunction: { DEFAULT: "cubic-bezier(.2,.7,.2,1)" },
       transitionDuration: { fast: "120ms", base: "200ms", slow: "320ms" },
       boxShadow: { overlay: "var(--shadow-overlay)" },
