@@ -36,7 +36,7 @@ from cco.contracts.domain import (
 )
 
 from .bundle_tools import ArtifactDoc, BundleError, EvidenceBundle, load_provisions
-from .locator import line_range, locate
+from .locator import MIN_QUOTE_LEN, line_range, locate
 
 __all__ = [
     "ArtifactDoc",
@@ -51,9 +51,12 @@ __all__ = [
 TOOL_CALLS_LIMIT = 6
 OUTPUT_RETRIES = 2
 DEFAULT_MODEL = "codestral-latest"
+MAX_EVIDENCE_ITEMS = 8
 MAX_DOC_CHARS = 20000
 MAX_CODE_CHARS = 12000
 MAX_PROMPT_EVIDENCE_CHARS = 100000
+
+LIMIT_MESSAGE = "limit reached - answer now with the evidence you have (no more tool calls are possible)."
 
 EventCallback = Callable[[AgentEvent], None]
 
@@ -77,6 +80,9 @@ that shows what the product does).
 registration record) and no such document is in the bundle: absence from the bundle is not proof that it does not \
 exist. Also use it when the evidence is too thin to decide. Add one `missing` evidence item per absent document kind, plus any passages that explain \
 what is there.
+- Use insufficient_evidence ONLY for a document kind listed under ABSENT DOCUMENT KINDS. If the documents and code \
+are present and show that the required element is missing from the product, the answer is potential_violation, \
+not insufficient_evidence.
 - uncertain: only if you truly cannot decide even with the tools.
 Never answer not_applicable; applicability is decided elsewhere. Do not output severity.
 
@@ -89,12 +95,15 @@ string literals, and never add or drop quote characters. start_line/end_line are
 (for example a disclaimer string, a prompt instruction, a data field), not generic introductions.
 - Keep each quote short (under 200 characters) and specific. Give 2 to 5 evidence items for \
 potential_violation/satisfied. Never invent text.
+- The evidence may contain "[REDACTED]" markers where secrets were removed. Quote the text exactly as it appears \
+in the evidence block, markers included; never reconstruct the original text from memory.
 - `citations` must be chosen only from the legal basis ids listed in the task.
 - reasoning_summary: 2-5 sentences, plain language, naming what the evidence shows and which provision it breaches \
 or satisfies. title: one line.
 - confidence values are floats between 0 and 1.
-You may use the tools to read more evidence (at most 6 calls), but the preloaded evidence is usually enough. \
-When you are ready, return the final result."""
+The preloaded evidence is normally sufficient: decide from it and return the final result straight away. \
+Tools exist only for a file that the evidence section says is missing; if no tools are offered, do not ask for them. \
+You have at most 6 tool calls in total; after that the tools refuse and you must answer with what you have."""
 
 
 # ----------------------------------------------------------------- result / deps
@@ -116,7 +125,10 @@ class _Deps:
     bundle: EvidenceBundle
     emit: Callable[..., None]
     notes: list[str] = field(default_factory=list)
-    tool_calls: int = 0
+    tool_calls: int = 0  # tool calls actually executed
+    tool_attempts: int = 0  # every call the model made, including refused ones
+    tool_cap: int = TOOL_CALLS_LIMIT
+    tools_enabled: bool = True
 
 
 def make_model(name: str | None = None) -> Model:
@@ -126,6 +138,22 @@ def make_model(name: str | None = None) -> Model:
 
     name = name or os.environ.get("CCO_MODEL_EVAL") or DEFAULT_MODEL
     return MistralModel(name, provider=MistralProvider(api_key=os.environ["MISTRAL_API_KEY"]))
+
+
+# ----------------------------------------------------------------- tools policy
+
+
+def missing_hint_files(req: Requirement, bundle: EvidenceBundle) -> list[str]:
+    """Literal code paths named in the hints that are not in the bundle."""
+    return [
+        g for g in req.evidence_hints.code_globs
+        if not any(c in g for c in "*?[") and not bundle.match_globs([g])
+    ]
+
+
+def needs_tools(req: Requirement, bundle: EvidenceBundle) -> bool:
+    """Tools are offered only when a code file named in the hints is not preloaded."""
+    return bool(missing_hint_files(req, bundle))
 
 
 # ----------------------------------------------------------------- prompt
@@ -164,7 +192,15 @@ def build_prompt(req: Requirement, bundle: EvidenceBundle) -> str:
             budget -= len(text)
             blocks.append(_block(f'type="document" artifact_id="{a.id}" kind="{a.kind}" path="{a.path}"', text))
     code_paths = bundle.match_globs(hints.code_globs)
+    shown = {a.path for a in bundle.artifacts if a.kind in hints.artifact_kinds}
     for rel in code_paths:
+        doc = next((a for a in bundle.artifacts if a.path == rel), None)
+        if doc is not None:  # a document that is also in the code tree: one block, cited as a document
+            if rel not in shown and doc.text.strip() and len(doc.text[:MAX_DOC_CHARS]) <= budget:
+                budget -= len(doc.text[:MAX_DOC_CHARS])
+                blocks.append(_block(f'type="document" artifact_id="{doc.id}" kind="{doc.kind}" path="{doc.path}"',
+                                     doc.text[:MAX_DOC_CHARS]))
+            continue
         text = bundle.read_text(rel)[:MAX_CODE_CHARS]
         if len(text) > budget:
             continue
@@ -177,6 +213,13 @@ def build_prompt(req: Requirement, bundle: EvidenceBundle) -> str:
         parts.append(
             "ABSENT DOCUMENT KINDS (nothing of this kind exists in the bundle): " + ", ".join(missing)
         )
+    if needs_tools(req, bundle):
+        parts.append(
+            "Files named in the hints but not preloaded: " + ", ".join(missing_hint_files(req, bundle))
+            + ". You may use the tools to look for them or for related code."
+        )
+    else:
+        parts.append("All hinted files are preloaded above; no tools are offered. Answer from this evidence.")
     ids = "; ".join(f"{a.id} ({a.kind}, {a.path})" for a in bundle.artifacts)
     parts.append(
         f'Documents available: {ids or "(none)"}. Code artifact_id: "{bundle.code_artifact_id}".\n'
@@ -203,15 +246,23 @@ def validate_candidate(
     if cand.conclusion == "not_applicable":
         errors.append("conclusion must not be not_applicable (applicability is decided elsewhere)")
 
+    if len(cand.evidence) > MAX_EVIDENCE_ITEMS * 2:  # runaway enumeration: one clear instruction, not 70 errors
+        errors.append(
+            f"too many evidence items ({len(cand.evidence)}); give 2 to 5 of the most decisive, each a short "
+            "verbatim quote of a meaningful line (never lone brackets or punctuation)"
+        )
+        return cand, errors
     present = bundle.kinds_present()
     fixed: list[Any] = []
     for i, ev in enumerate(cand.evidence):
         tag = f"evidence[{i}]"
         if isinstance(ev, MissingRef):
             if ev.artifact_kind in present:
-                errors.append(
-                    f"{tag}: a '{ev.artifact_kind}' document exists in the bundle, so it is not missing"
-                )
+                if cand.conclusion == "insufficient_evidence":
+                    errors.append(
+                        f"{tag}: a '{ev.artifact_kind}' document exists in the bundle, so it is not missing"
+                    )
+                continue  # otherwise a harmless, wrong 'missing' note: dropped, not an error
             elif ev.artifact_kind not in req.evidence_hints.artifact_kinds:
                 errors.append(
                     f"{tag}: '{ev.artifact_kind}' is not a document kind this requirement needs; "
@@ -228,7 +279,7 @@ def validate_candidate(
             if m is None:
                 errors.append(
                     f"{tag}: quote not found in {art.id}: {ev.quote[:120]!r}. Copy the exact text of one "
-                    "passage, verbatim, or read the document with read_artifact."
+                    "passage, verbatim." + _closest(art.text, ev.quote)
                 )
                 continue
             fixed.append(
@@ -237,6 +288,18 @@ def validate_candidate(
                 )
             )
         elif isinstance(ev, CodeRef):
+            doc = next((a for a in bundle.artifacts if a.path == ev.path.strip().removeprefix("./")), None)
+            if doc is not None:  # cited as code, but it is a document: normalise to a document span
+                m = locate(doc.text, ev.quote)
+                if m is None:
+                    errors.append(
+                        f"{tag}: quote not found in {doc.path}: {ev.quote[:120]!r}. Copy the exact text of one "
+                        "passage, verbatim." + _closest(doc.text, ev.quote)
+                    )
+                    continue
+                fixed.append(DocumentSpanRef(artifact_id=doc.id, quote=doc.text[m.start : m.end],
+                                             start=m.start, end=m.end))
+                continue
             try:
                 text = bundle.read_text(ev.path)
             except BundleError as e:
@@ -244,9 +307,11 @@ def validate_candidate(
                 continue
             m = locate(text, ev.quote)
             if m is None:
+                m = _near_line(text, ev.quote)  # e.g. the model restored a [REDACTED] span from memory
+            if m is None:
                 errors.append(
                     f"{tag}: quote not found in {ev.path}: {ev.quote[:120]!r}. Copy ONE source line "
-                    "verbatim (do not join lines or string literals), or use read_file to see the exact text."
+                    "verbatim (do not join lines or string literals)." + _closest(text, ev.quote)
                 )
                 continue
             s, e = line_range(text, m.start, m.end)
@@ -260,6 +325,8 @@ def validate_candidate(
                 )
             )
 
+    if len(fixed) > MAX_EVIDENCE_ITEMS:  # verified items only; extra ones are dropped, not an error
+        fixed = fixed[:MAX_EVIDENCE_ITEMS]
     real = [e for e in cand.evidence if not isinstance(e, MissingRef)]
     miss = [e for e in cand.evidence if isinstance(e, MissingRef)]
     if cand.conclusion in ("potential_violation", "satisfied") and not real:
@@ -272,6 +339,46 @@ def validate_candidate(
 
 
 # ----------------------------------------------------------------- agent
+
+
+class _Span:
+    def __init__(self, start: int, end: int) -> None:
+        self.start, self.end = start, end
+
+
+def _near_line(text: str, quote: str) -> _Span | None:
+    """One real line that the quote reproduces with minor differences (ratio >= 80). The real line is stored."""
+    from rapidfuzz import fuzz
+
+    q = quote.strip().lower()
+    if len(q) < 20 or "\n" in q:
+        return None
+    pos = 0
+    for ln in text.splitlines(keepends=True):
+        body = ln.rstrip("\r\n")
+        if body.strip() and fuzz.ratio(q, body.strip().lower()) >= 80:
+            lead = len(body) - len(body.lstrip())
+            return _Span(pos + lead, pos + len(body.rstrip()))
+        pos += len(ln)
+    return None
+
+
+def _closest(text: str, quote: str) -> str:
+    """Hint for a failed code quote: the real line most similar to it."""
+    if len(quote.strip()) < MIN_QUOTE_LEN:
+        return f" The quote is too short (min {MIN_QUOTE_LEN} characters): use a longer fragment or drop the item."
+    from rapidfuzz import fuzz
+
+    best, score = None, 0.0
+    for i, ln in enumerate(text.splitlines(), 1):
+        if not ln.strip():
+            continue
+        sc = fuzz.ratio(quote.strip().lower(), ln.strip().lower())
+        if sc > score:
+            best, score = (i, ln.strip()), sc
+    if best is None or score < 50:
+        return ""
+    return f" The closest real line is line {best[0]}: {best[1][:200]!r} - copy it exactly."
 
 
 def _preview(s: Any) -> str:
@@ -290,6 +397,11 @@ def _build_agent(model: Model | str) -> Agent[_Deps, FindingCandidate]:
 
     def run_tool(ctx: RunContext[_Deps], name: str, args: dict, fn: Callable[[], str]) -> str:
         d = ctx.deps
+        d.tool_attempts += 1
+        if d.tool_calls >= d.tool_cap:  # hard cap, independent of the framework's own limits
+            d.emit("tool_result", tool=name, summary=f"{name} refused: limit reached",
+                   error="tool limit reached")
+            return LIMIT_MESSAGE
         d.tool_calls += 1
         d.emit("tool_call", tool=name, summary=f"{name}({_short(args)})", input_preview=_preview(args))
         t0 = time.monotonic()
@@ -303,25 +415,28 @@ def _build_agent(model: Model | str) -> Agent[_Deps, FindingCandidate]:
                output_preview=_preview(out), latency_ms=_ms(t0))
         return out
 
-    @agent.tool
+    async def only_if_enabled(ctx: RunContext[_Deps], tool_def: Any) -> Any:
+        return tool_def if ctx.deps.tools_enabled else None
+
+    @agent.tool(prepare=only_if_enabled)
     def read_artifact(ctx: RunContext[_Deps], artifact_id: str, section: str | None = None) -> str:
         """Read a document of the bundle by artifact id, optionally only the section under a heading."""
         return run_tool(ctx, "read_artifact", {"artifact_id": artifact_id, "section": section},
                         lambda: ctx.deps.bundle.read_artifact(artifact_id, section))
 
-    @agent.tool
+    @agent.tool(prepare=only_if_enabled)
     def grep_code(ctx: RunContext[_Deps], fixed_string: str, glob: str | None = None) -> str:
         """Case-insensitive fixed-string search in the code (not a regex). Returns path:line: text."""
         return run_tool(ctx, "grep_code", {"fixed_string": fixed_string, "glob": glob},
                         lambda: ctx.deps.bundle.grep_code(fixed_string, glob))
 
-    @agent.tool
+    @agent.tool(prepare=only_if_enabled)
     def read_file(ctx: RunContext[_Deps], path: str, start: int = 1, end: int | None = None) -> str:
         """Read lines start..end (1-based, max 200) of a file in the bundle."""
         return run_tool(ctx, "read_file", {"path": path, "start": start, "end": end},
                         lambda: ctx.deps.bundle.read_file(path, start, end))
 
-    @agent.tool
+    @agent.tool(prepare=only_if_enabled)
     def get_provision(ctx: RunContext[_Deps], provision_id: str) -> str:
         """Return the text of a legal provision by id."""
         return run_tool(ctx, "get_provision", {"id": provision_id},
@@ -402,10 +517,12 @@ async def evaluate_requirement(
             )
         )
 
-    deps = _Deps(req=req, bundle=bundle, emit=lambda t, **kw: emit(t, kw.pop("summary", t), **kw))
+    deps = _Deps(req=req, bundle=bundle, emit=lambda t, **kw: emit(t, kw.pop("summary", t), **kw),
+                 tools_enabled=needs_tools(req, bundle))
     agent = _build_agent(model)
     prompt = build_prompt(req, bundle)
-    limits = UsageLimits(tool_calls_limit=TOOL_CALLS_LIMIT, request_limit=TOOL_CALLS_LIMIT + OUTPUT_RETRIES + 4)
+    # total model requests per requirement: 1 answer + at most 6 tool rounds + 2 output retries
+    limits = UsageLimits(request_limit=1 + TOOL_CALLS_LIMIT + OUTPUT_RETRIES)
 
     notes: list[str] = []
     candidate: FindingCandidate | None = None
@@ -442,7 +559,7 @@ async def evaluate_requirement(
                 continue
             raise
         except UsageLimitExceeded as e:
-            notes = [f"tool-call limit reached ({TOOL_CALLS_LIMIT}): {e}"]
+            notes = [f"tool-call limit reached ({TOOL_CALLS_LIMIT}); request cap hit: {e}"]
             break
         except UnexpectedModelBehavior as e:
             notes = [f"output validation failed after {OUTPUT_RETRIES} retries"] + (deps.notes or [str(e)])

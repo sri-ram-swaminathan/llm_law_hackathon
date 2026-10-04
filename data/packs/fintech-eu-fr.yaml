@@ -191,7 +191,9 @@ requirements:
       Firms may rely on client information unless they know it is manifestly out of date, inaccurate or incomplete.
       Advice generated for a superseded profile must not be presented as current. Look at what happens to existing
       stored advice when the profile is edited: is there a flag, banner or invalidation tied to the profile update
-      time? If the old advice is shown as current after a profile change, it is a potential violation.
+      time? If the old advice is shown as current after a profile change, it is a potential violation. Satisfied only if
+      code or UI compares the profile update time with the advice creation time, or marks old advice as outdated.
+      A note telling the user to refresh, or a stored creation date alone, does not satisfy this. Decide from the code and the product guide: if they show no such mechanism, that is a potential violation.
     derived_from: [delreg565-art54-7]
     applies_when: '"investment_advice" in activities'
     mandatory: false
@@ -237,7 +239,7 @@ requirements:
       Data subjects can obtain erasure of their personal data without undue delay. The product must offer a way
       to erase an account and all data linked to it. Look for an account-deletion endpoint or UI action, and check
       that deletion also removes dependent rows (profile, holdings, stored recommendations). No deletion path, or a
-      path that leaves linked data behind, is a potential violation.
+      path that leaves linked data behind, is a potential violation. Decide from the code and the product guide: if they show no deletion path, that is a potential violation, never insufficient evidence.
     derived_from: [gdpr-art17]
     applies_when: len(data_categories) > 0
     mandatory: false
@@ -286,7 +288,9 @@ requirements:
       Controllers must implement technical measures appropriate to the risk. Session tokens must not be signed
       with a secret that is published in the source code. Look at where the token-signing secret (for example
       JWT_SECRET) is read: a hard-coded fallback value used when the environment variable is unset is a potential
-      violation; a startup failure when it is unset is satisfied.
+      violation; a startup failure when it is unset is satisfied. Quote the single source line that reads the
+      secret (the `JWT_SECRET =` line of config.py), copied character for character as it appears in the evidence
+      block, including any [REDACTED] marker that the evidence contains.
     derived_from: [gdpr-art32]
     applies_when: len(data_categories) > 0
     mandatory: false
@@ -329,8 +333,7 @@ requirements:
     statement: >-
       When providing investment advice the firm must give the client a suitability statement in a durable medium,
       so clients must be able to retrieve the advice they were given. Look for an endpoint or screen that lists or
-      opens past advice, not only the latest one. If earlier advice is stored but cannot be retrieved by the
-      client, it is a potential violation.
+      opens past advice, not only the latest one. If earlier advice is stored but cannot be retrieved by the client, it is a potential violation. Decide from the code and the product guide: if they show no such endpoint or screen, that is a potential violation.
     derived_from: [mifid2-art25-6]
     applies_when: '"investment_advice" in activities'
     mandatory: false
@@ -371,8 +374,13 @@ requirements:
     statement: >-
       Users interacting with an AI system, and recipients of AI-generated text published to inform the public,
       must be told it is AI-generated unless obvious. Look in the UI components and product description for a
-      label, badge or sentence saying the recommendations are AI-generated. Whether Art. 50 applies to this
-      product is a legal judgement; if a label exists but applicability is unclear, answer uncertain.
+      label, badge or sentence saying the recommendations are AI-generated. Art. 50 clearly applies to a system
+      that interacts directly with a person in conversation (a chatbot) or that publishes AI text to inform the
+      public. Decide first whether it clearly applies to this product, a dashboard feature that generates
+      structured investment recommendations and is not a chatbot. If it is not clear that Art. 50 applies to such
+      a feature, the answer is uncertain, even when a label exists or is missing (a lawyer must decide). Unless
+      the evidence shows a conversational (chat) interface, the answer is uncertain: do not answer satisfied or
+      potential_violation.
     derived_from: [aiact-art50]
     applies_when: len(ai_uses) > 0
     mandatory: false
