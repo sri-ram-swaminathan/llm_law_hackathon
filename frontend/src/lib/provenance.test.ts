@@ -33,7 +33,7 @@ describe("provenance()", () => {
   it("upload, derived upload and seed", () => {
     expect(provenance({ ...base, source: "ui", branch: "v0.9.0", git_sha: "7bf6004ccccc" }).text).toBe("Upload · ref v0.9.0 @ 7bf6004");
     expect(provenance({ ...base, source: "ui" }, null, { derivedFrom: "0.9.0" }).text).toBe("Upload · derived from v0.9.0");
-    expect(provenance({ ...base, source: "seed" }).text).toBe("Seed");
+    expect(provenance({ ...base, source: "seed" }).text).toBe("Recorded run");
   });
 
   it("run state: live only while running", () => {

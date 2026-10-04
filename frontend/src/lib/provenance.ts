@@ -9,7 +9,7 @@ import { fmtDateTime } from "./format";
  *   source=ci + ci_run_url  → "CI · PR #n · run ↗"
  *   source=ci               → "Recorded audit (CLI)"
  *   source=ui               → "Upload" (· "derived from v0.9.0" when `derivedFrom` is passed)
- *   source=seed             → "Seed"
+ *   source=seed             → "Recorded run" (snapshot of a real run, or fixtures)
  *   then "ref <branch> @ <sha7>", then the run ("assessed 4 Oct 15:20" | "Live run")
  */
 export type ProvenancePart = {
@@ -64,7 +64,7 @@ export function provenance(
     parts.push({ key: "source", text: sourceLabel });
     if (opts.derivedFrom) parts.push({ key: "derived", text: `derived from v${opts.derivedFrom.replace(/^v/, "")}` });
   } else {
-    sourceLabel = "Seed";
+    sourceLabel = "Recorded run";
     parts.push({ key: "source", text: sourceLabel });
   }
 

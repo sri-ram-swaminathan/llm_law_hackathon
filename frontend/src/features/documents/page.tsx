@@ -33,7 +33,7 @@ export default function DocumentsPage() {
 
   const focus = resolveFinding(sp.get("f"), findings, idx);
   const citesDoc = (f: FindingView | undefined, aid: string) => !!f && (f.evidence ?? []).some((e) => e.type === "document_span" && e.artifact_id === aid);
-  const selected = docs.find((d) => d.id === artifactId) ?? (focus && docs.find((d) => citesDoc(focus, d.id))) ?? docs[0];
+  const selected = docs.find((d) => d.id === artifactId) ?? (focus && docs.find((d) => citesDoc(focus, d.id))) ?? mostCited(docs, findings) ?? docs[0];
 
   const [active, setActive] = useState<string | undefined>(focus?.id);
   const [sheetNote, setSheetNote] = useState<string | null>(null);
@@ -195,4 +195,15 @@ function useMedia(q: string) {
     return () => mq.removeEventListener("change", h);
   }, [q]);
   return !!m;
+}
+
+/** Default document: the one most findings cite, so the review opens on highlights rather than a clean file. */
+function mostCited<T extends { id: string }>(docs: T[], findings: FindingView[]): T | undefined {
+  let best: T | undefined;
+  let n = 0;
+  for (const d of docs) {
+    const c = findings.filter((f) => (f.evidence ?? []).some((e) => e.type === "document_span" && e.artifact_id === d.id)).length;
+    if (c > n) { best = d; n = c; }
+  }
+  return best;
 }
