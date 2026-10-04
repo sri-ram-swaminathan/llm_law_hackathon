@@ -119,8 +119,12 @@ def release_readiness(s: Session, release_id: str) -> Readiness:
         raise HTTPException(404, f"release {release_id!r} has no completed assessment")
     views = assessment_views(s, assessment)
     prev_views = None
-    if release.previous_release_id:
-        prev = latest_assessment(s, release.previous_release_id, completed_only=True)
+    prev_release = gate.resolve_previous_release(release, list_releases(s))
+    if prev_release is not None:
+        prev = latest_assessment(s, prev_release.id, completed_only=True)
         if prev is not None:
             prev_views = assessment_views(s, prev)
-    return gate.compute_readiness(release, assessment, views, load_requirements(s), prev_views)
+    r = gate.compute_readiness(release, assessment, views, load_requirements(s), prev_views)
+    if prev_release is not None:
+        r = r.model_copy(update={"previous_release_id": prev_release.id})
+    return r
