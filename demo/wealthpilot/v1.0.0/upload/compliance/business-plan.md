@@ -2,7 +2,7 @@
 
 # Wealthpilot SAS: Business Plan 2026–2028
 
-Version 0.9 · October 2026 · Confidential, prepared for the seed round
+Version 1.0 · October 2026 · Confidential, prepared for the seed round (updated for the 1.0 release)
 
 ## 1. Summary
 
@@ -22,7 +22,7 @@ We are raising **€800k** to launch publicly in France in Q1 2027 and to reach 
 
 The product is live as a working prototype (see `docs/PRODUCT_GUIDE.md` and `docs/TECHNICAL_ARCHITECTURE.md`).
 
-1. **Onboarding in under a minute.** Six questions: age, income, goal, monthly budget, risk tolerance and horizon. We deliberately keep onboarding short. Every extra question loses about 8% of sign-ups in our tests, so we don't ask about investment knowledge, experience or the ability to absorb losses.
+1. **Suitability onboarding.** Nine questions: age, income, goal, monthly budget, risk tolerance and horizon, plus investment knowledge, investment experience and the maximum loss the client can bear. No advice is generated until the profile is complete, and every analysis includes a suitability statement. If the client changes their profile, earlier analyses are flagged as out of date.
 2. **Portfolio.** Users type in their holdings. Live prices come from public market data.
 3. **AI recommendations.** On demand, Wealthpilot produces three concrete recommendations, each naming a specific instrument (for example *"Buy CW8.PA, 40% of new monthly contributions"* or *"Sell 30% of your Airbus position"*), plus a target allocation and a risk warning. Recommendations are tailored to the user's profile and portfolio.
 4. **Dashboard.** Value, gains, a measured risk score compared with the user's stated tolerance, and market context.
@@ -31,11 +31,11 @@ What we don't do: execute trades, hold client money or securities, or take commi
 
 ## 4. Regulatory positioning
 
-We position Wealthpilot as an **information and education service**. Every recommendation screen shows the notice *"This is not financial advice."* This lets us launch without the cost and delay of registering as a *conseiller en investissements financiers* (CIF) with ORIAS and joining an AMF-approved association. That takes an estimated 3–4 months and €15–25k a year in compliance costs, including professional-liability insurance.
+Wealthpilot provides **personalised investment advice** and is registered as a *conseiller en investissements financiers* (CIF) with ORIAS (no. 00000000, fictional), as a member of an AMF-approved CIF association. Its advice is non-independent. Every recommendation screen shows this status disclosure; see `compliance/cif-registration.md`.
 
-We'll revisit registration once we pass 50,000 users, or if a partner bank requires it.
+The compliance lead owns the yearly registration, association membership, training and complaint handling. The CCOmmit compliance check runs on every release candidate.
 
-No privacy notice or terms of service are published yet. Sign-up asks only for an email and a password, to keep conversion high. A privacy policy and terms will be written before the public launch.
+The terms of service and privacy policy are published (`compliance/terms.md`, `compliance/privacy-policy.md`) and are accepted at sign-up.
 
 ## 5. Business model
 
@@ -77,6 +77,6 @@ We take no commissions and no payments from product providers. Target conversion
 
 ## 10. Key risks
 
-- **Regulatory:** the AMF could treat personalised recommendations on named instruments as investment advice that requires CIF status. *Mitigation:* the disclaimer on every screen. We'll seek a legal opinion after the seed round.
+- **Regulatory:** advice quality and suitability obligations under the CIF regime. *Mitigation:* the suitability questionnaire, suitability statements, advice history, the compliance lead's reviews, and the CCOmmit check on every release.
 - **AI quality:** recommendations may be wrong or unsuitable. *Mitigation:* prefer diversified ETFs; output schema validation.
 - **Market data:** we depend on a free, unofficial price source. *Mitigation:* move to a licensed feed before scaling.

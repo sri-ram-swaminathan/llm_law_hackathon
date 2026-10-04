@@ -3,12 +3,12 @@ id: T24
 title: Company + legal indexes — chunk + mistral-embed, unified search API
 kind: work                  # work | verify | gate
 deps: [T04, T12]
-owns: [backend/cco/search/**, backend/cco/api/search.py, backend/cco/main.py, backend/cco/ingest/**, backend/cco/legal/**, data/corpus-cache/**, data/legal-index/**, backend/tests/test_search.py, backend/tests/test_legal.py]                # work only: paths or globs this task may edit
+owns: [backend/cco/api/__init__.py, backend/cco/search/**, backend/cco/api/search.py, backend/cco/main.py, backend/cco/ingest/**, backend/cco/legal/**, data/corpus-cache/**, data/legal-index/**, backend/tests/test_search.py, backend/tests/test_legal.py]                # work only: paths or globs this task may edit
 repo: .
 needs: [cmd:uv, env:MISTRAL_API_KEY@.env]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "cd backend && uv run pytest tests/test_search.py tests/test_ingest.py -q"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: doing                   # todo | doing | review | done | blocked | skipped
+status: done                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T24 — Company-document index — chunk + mistral-embed at ingest, evidence search API
