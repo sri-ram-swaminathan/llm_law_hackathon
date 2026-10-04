@@ -16,482 +16,590 @@ needs: [gh, docker, env:MISTRAL_API_KEY]   # spec-wide preflight needs
 
 # AI Chief Compliance Officer MVP
 
-> **Inputs:** `docs/product-brief.md`, the frontend and legal-sources brainstorm, and the alignment decisions of 4 Oct 2026 (this file began as `docs/spec-outline.md`).
-> **Decision status:** _agreed_ / _decided_ means locked with Roman; _proposed_ means still open (see §8 and §11).
-> **Team brief:** https://claude.ai/artifact/EnnazLhd2cNqiAKS3jxLMA
+> **Inputs:** `docs/product-brief.md`, the frontend and legal-sources brainstorm, and the alignment decisions of 4 Oct 2026. This file began as `docs/spec-outline.md`.
+> **Revision:** rev 2 applies every accepted finding of `critique/01-spec.md`. Finding ids (B1…, M1…, m1…) are cited where they changed the design.
+> **Team brief:** https://claude.ai/artifact/EnnazLhd2cNqiAKS3jxLMA (written before rev 2; some details differ, and this file wins).
 
-## 0. Background: brainstorm review
+## 0. Background
 
-### What holds up and should be locked
+**Product claim:** *"Can this company launch this release? What blocks it, why, and what has to change?"* It's a launch gate, not a legal chatbot.
 
-- **Product claim:** *"Can this company launch this release? What blocks it, why, and what has to change?"* It's a launch gate, not a legal chatbot.
-- **The Finding is the atomic unit.** It links law → obligation → company claim → implementation → remediation. Documents and code are evidence.
-- **LegalProvision ≠ Requirement.** We audit requirements, which are derived from provisions.
-- **More states than red/green.** The key one is *insufficient evidence*: not finding a problem isn't proof of compliance.
-- **Curated scoping, not RAG-based applicability.** Live legal sources supply the official text and citations.
-- **One engine, three surfaces:** web UI, MCP and REST/CLI.
-- **One company, two releases:** non-compliant → compliant.
-- **Vertical slices, starting on fixtures.**
-
-### What changed after review
-
-| # | Change | Why | Status |
-|---|---|---|---|
-| R1 | **Python backend: FastAPI + PydanticAI, no Mastra.** | Mastra only runs on TypeScript. PydanticAI supports Mistral, returns typed Pydantic output, retries automatically when an output validator raises `ModelRetry`, and streams agent events for the activity layer. One runtime. | agreed |
-| R2 | The model returns a **verbatim quote**. The server finds the offsets and line numbers. | LLMs get offsets wrong. A quote can be checked and retried. | proposed |
-| R3 | pgvector is used **only for legal provision search**. The audit uses per-requirement *evidence hints*. | Reproducible on stage, one less component on the critical path. | proposed |
-| R4 | **One Finding per (requirement × assessment)**, satisfied ones included. | Coverage and the release comparison come straight from the data. | proposed |
-| R5 | **Three confidence levels.** Applicability and evidence are computed by rules; only finding confidence comes from the model. | Fewer invented numbers. | proposed |
-| R6 | Founder and counsel personas with a **toggle and no authentication**. | Auth never shows in a demo. | proposed |
-| R7 | **Fetch a single URL and extract its readable text.** No crawler. | Scope. | proposed |
-| R8 | **Live assessment with a replay fallback** of a stored run. | Stage safety. | proposed |
-| R9 | **Agent-activity layer:** a live, persisted trace of every agent step, tool call, model call, retry and validation error, linked to the findings it produced. | Shows the agent at work and makes every finding auditable. | agreed |
-| R10 | **Demo company = Wealthpilot** (the `FinTechProto` repo), an AI investment advisor for French retail investors. It replaces AcmePay. | It's real code with real, natural compliance gaps. | agreed |
-| R12 | **CI release gate moves into V1:** a GitHub Action in FinTechProto runs a CCO assessment on the release PR (`dev → main`) and on `v*` tags. It posts the gate and blockers as a PR comment and a job summary, and fails the check on NOT_READY. | The "red PR turns green" moment is the clearest way to show continuous compliance. It reuses the same REST API, so it's cheap. | agreed |
-| R11 | **Fix plan (remediation spec):** after an assessment, generate a Markdown spec from the selected findings. A coding agent can execute it; Claude Code can also pull it over MCP. Then a new release is assessed against it. | Closes the loop between "you're not compliant" and the next release. Wealthpilot v1.0.0 is built from this plan. | agreed |
-
----
+**Core ideas kept from the brainstorm:**
+- The **Finding** is the atomic unit: law → obligation → company claim → implementation → remediation.
+- **LegalProvision ≠ Requirement**: we audit requirements, which are derived from provisions.
+- **Insufficient evidence** is a state of its own, because not finding a problem isn't proof of compliance.
+- **Curated scoping**, not RAG-based applicability.
+- **One engine, several surfaces**: web, CI and MCP.
+- **One company, two releases**: non-compliant → compliant, connected by a fix plan and a CI release gate.
 
 ## 1. Problem
 
-Founders launching a regulated product, fintech in particular, don't know which obligations apply to them or whether their policies and code actually meet those obligations. Compliance advice is expensive, generic, and disconnected from what the product actually does.
+Founders launching a regulated product, fintech in particular, don't know which obligations apply to them or whether their policies and code actually meet those obligations. Compliance advice is expensive, generic, and disconnected from what the product actually does. Once a product is live, every release can quietly break a promise made in its policies.
+
+Success, for this hackathon: on stage, a fintech's release is shown **not ready to launch**, with each blocker traced to the founder's own documents and code and to the official law. A generated fix plan drives the fixes. The next release passes the same check in CI.
 
 ## 2. Goals / non-goals
 
 **Goals (V1, hackathon)**
-- A founder sets up a company, product and release, confirms a regulatory profile, and adds evidence (documents, a URL and code).
-- A pre-launch assessment produces a **launch gate** (Not ready / Review required / Ready) from requirements scoped to **EU + France, fintech**.
-- Every finding can be traced to **company evidence** (a document span or code lines) and an **official legal citation** (EUR-Lex/CELLAR or Légifrance).
-- **Agent activity is visible:** live during a run, and afterwards for each finding.
-- Counsel can confirm, override or ask for evidence. The human decision drives the gate.
-- Wealthpilot v0.9.0 → v1.0.0 shows blockers resolved.
-- A remote MCP endpoint with about six tools, usable from Claude Code (demo extension).
-- **CI release gate:** a GitHub Action checks every release PR and tag of the product and blocks the merge when the release is NOT_READY.
+- A seeded company (Wealthpilot) whose regulatory profile the founder confirms on one form (M10).
+- Evidence comes in one way: a **repo ZIP + `compliance/*.md` documents**. The UI upload, the seed and CI all use it (M5).
+- A pre-launch assessment produces a **launch gate** (Not ready / Review required / Ready) from about **10 curated requirements** for **EU + France, fintech** (B2).
+- Every finding traces to **company evidence** (a document span or code lines) and an **official legal citation**.
+- **Agent activity is visible** live during a run and afterwards per finding.
+- **Counsel** can confirm or override a finding inline. Their decision drives the gate and **carries forward** to later releases while the evidence is unchanged (B1).
+- A **deterministic fix plan** for the open findings, which a coding agent can execute (M3).
+- A **CI release gate**: a GitHub Action on FinTechProto's release PR and tags (M6).
+- **MCP** with 4 read tools for Claude Code (M4).
+- Wealthpilot v0.9.0 → v1.0.0 shows the blockers resolved.
 
-**Non-goals (V1):** a GitHub App or OAuth (the Action uploads the code itself), per-commit or per-PR delta analysis for non-release PRs, generalized delta analysis, Operating/Scaling stage workflows ("coming soon" only), a regulator persona, auth/RBAC, countries other than FR, exhaustive legal coverage, chat as a primary surface, and data-room integrations.
+**Non-goals (V1):**
+- Chat or the Ask CCO drawer, assistant-ui, a ⌘K palette (M4).
+- URL fetch, PDF ingestion, server-side `repo_path` ingestion (M5).
+- Onboarding stepper and AI profile suggestion; multi-company setup UI (M10).
+- A separate Reviews queue, Activity history or compare page (m1, M9, m2).
+- A GitHub App or OAuth; checks on non-release PRs; general delta analysis.
+- Operating and Scaling stage workflows ("coming soon" only); a regulator persona; user accounts or RBAC (B3 adds one deploy token, not accounts).
+- Countries other than FR; exhaustive legal coverage; data rooms; live Légifrance (stretch only, M7).
 
 ## 3. Constraints
 
-- Hackathon timeline: the golden path must be demoable by the halfway point.
-- **Backend:** Python 3.12, FastAPI, PydanticAI (Mistral), SQLAlchemy + Postgres + pgvector, official `mcp` Python SDK.
-- **LLM:** Mistral only.
-  - **Only the models our key has quota for** (checked 4 Oct; medium, small, magistral, large and OCR are at 0 or not in our tier):
+- **Timeline:** hackathon. The midpoint must prove both the UI on fixtures **and** the live model on the golden findings (B4).
+- **Backend:** Python 3.12 (via `uv`), FastAPI, PydanticAI, SQLAlchemy + Postgres + pgvector, official `mcp` Python SDK. **Single process** (one uvicorn worker). The MCP Streamable HTTP session manager runs in the FastAPI lifespan (m6).
+- **LLM: Mistral, only the models our key has quota for** (checked 4 Oct; medium, small, magistral, large and OCR have 0 quota or aren't in our tier):
 
-    | Role | Model | Quota (req/min) | Checked |
-    |---|---|---|---|
-    | Evaluator agent (code + documents) | `codestral-latest` | 125 | strict JSON schema ✓, tool calls ✓, CIF finding correct and identical across 2 runs, ~2.5 s |
-    | Profile suggestion, remediation wording, chat | `ministral-8b-latest` | 188 | strict JSON schema ✓, tool calls ✓, ~3–4 s |
-    | Fallback for either | `open-mistral-nemo` | 188 | same results as ministral |
-    | Embeddings | `mistral-embed` | 60 | 1024 dims → `vector(1024)` |
+  | Role | Model | Quota (req/min) | Checked |
+  |---|---|---|---|
+  | Evaluator agent | `codestral-latest` | 125 | strict JSON schema ✓, tool calls ✓, CIF finding correct and identical on 2 runs, ~2.5 s |
+  | Light tasks (summaries) | `ministral-8b-latest` | 188 | strict JSON schema ✓, tool calls ✓ |
+  | Fallback | `open-mistral-nemo` | 188 | same as ministral |
+  | Embeddings | `mistral-embed` | 60 | 1024 dims → `vector(1024)` |
 
-  - **Upgrade path:** all model ids are config values (`CCO_MODEL_EVAL`, `CCO_MODEL_LIGHT`, `CCO_MODEL_EMBED`). If `mistral-medium-latest` gets quota, switching is a one-line change, and the golden eval (AC4) decides whether to keep it.
-  - **Consequences of using smaller models, built into the design:**
-    - The **model never sets severity**. Severity comes from `Requirement.default_severity`. The small models said "high" for the CIF blocker.
-    - The model only chooses the conclusion, the evidence and the reasoning. Prompts are one requirement at a time, with the evidence bundle preloaded.
-    - The **quote locator must be tolerant.** About a third of the test quotes joined a Python string that's split across lines (`"…only. " "This is…"`), so they weren't exact substrings. The locator compares against two normalized forms: whitespace collapsed, and string-literal joins and quote characters removed. On no match, it retries the item.
-  - **No OCR:** PDFs are converted to text locally (`pymupdf`), and the demo documents are Markdown.
-  - The key is in `.env`.
-- **Frontend:** React + Vite + TypeScript + Tailwind + shadcn/ui, with a custom design (not the default shadcn look).
+  - Model ids are config: `CCO_MODEL_EVAL`, `CCO_MODEL_LIGHT`, `CCO_MODEL_EMBED`. If `mistral-medium-latest` gets quota, switching is one line, and AC4 decides whether to keep it.
+  - Because these models are small:
+    - **The model never sets severity**; it comes from the requirement.
+    - There is one requirement per prompt, with the evidence preloaded.
+    - The **quote locator is tolerant**: it compares against two normalized forms (whitespace collapsed; string-literal joins and quote characters removed). About a third of the test quotes joined Python strings that were split across lines.
+- **Frontend:** React + Vite + TypeScript + Tailwind + shadcn/ui, with a custom design.
 - **Process:** SDD. **Opus** plans, specs and verifies; **Sonnet** implements.
 - **Legal sources:**
-  - CELLAR: public, no key. **Checked 4 Oct:** SPARQL resolves CELEX → work; REST by CELEX returns full XHTML (GDPR Art. 5, MiFID II Art. 4(1)(4) found). The eur-lex.europa.eu web pages return an empty HTTP 202 bot challenge to scripts, so use CELLAR, not EUR-Lex HTML.
-  - Légifrance through PISTE OAuth2: credentials in `.env`, but **authentication currently fails**; we need the Client ID and environment (Q8).
-  - Legora: downloaded documents are supplementary only, subject to their terms (Q5).
+  - CELLAR is public and works: SPARQL by CELEX, and REST by CELEX for the full XHTML text.
+  - The eur-lex.europa.eu pages return a bot-challenge 202, and legifrance.gouv.fr pages return a Cloudflare 403, so neither can be scraped.
+  - Légifrance via PISTE OAuth fails (`invalid_client`). French texts are **curated into the cache by hand** (M7), and live Légifrance is a stretch.
+- **Legal posture:** every output is an **AI pre-assessment, not legal advice** (M8).
 
 ## 4. Current state (grounded @ 05897a0; FinTechProto @ ae1c4e5)
 
 **This repo:** there is no application code. It contains:
 - `docs/product-brief.md` and this spec;
-- `demo/wealthpilot/v0.9.0/remediation-plan.md`, the golden fix plan;
-- the SDD kit (`docs/specs/_kit`) and the six `roman-*` skills under `.claude/skills/`.
+- `demo/wealthpilot/v0.9.0/remediation-plan.md` (the golden fix plan);
+- the SDD kit (`docs/specs/_kit`) and the `roman-*` skills (`.claude/skills/`).
 
-So the CCO is built from scratch.
-
-**Demo target `../FinTechProto` (Wealthpilot Phase 1)** is a FastAPI + SQLAlchemy backend with a React (JSX) + Tailwind frontend. It has Mistral JSON-mode recommendations, yfinance prices and JWT auth. The claims this spec relies on, checked against `ae1c4e5`:
+**Demo target `../FinTechProto` (Wealthpilot Phase 1):** a FastAPI + SQLAlchemy backend and a React (JSX) + Tailwind frontend. It uses Mistral JSON-mode recommendations, yfinance and JWT auth. The claims this spec relies on, checked against `ae1c4e5`:
 
 | Claim | Where | Status |
 |---|---|---|
-| Disclaimer says "This is not financial advice" | `backend/app/config.py:10-14 @ ae1c4e5` | verified |
-| The system prompt asks for personalised analysis with concrete tickers and percentages | `backend/app/advisor.py:17-26 @ ae1c4e5` | verified |
-| The JWT secret falls back to `"dev-secret-change-me"` | `backend/app/config.py:4 @ ae1c4e5` | verified |
-| The risk profile has 6 fields, with no knowledge/experience or loss capacity | `backend/app/models.py:29-40`, `backend/app/schemas.py:19-25`, `frontend/src/pages/Onboarding.jsx:26-31 @ ae1c4e5` | verified |
-| Profile upsert overwrites in place, with no link to existing analyses | `backend/app/routers/profile.py:12-20 @ ae1c4e5` | verified |
-| Only the latest analysis is exposed | `backend/app/routers/advice.py:31-38 @ ae1c4e5` | verified |
-| No account deletion endpoint | `backend/app/routers/auth.py @ ae1c4e5` (signup, login, me only) | verified |
-| The JWT is stored in `localStorage` | `frontend/src/lib/api.js:3-4 @ ae1c4e5` | verified (not a golden finding) |
-| `docs/product.md` describes behaviour and gaps (§9 compliance posture, §10 gaps) | `docs/product.md` | **untracked**: not in `ae1c4e5`; it must be committed before `v0.9.0` |
-| No privacy policy, terms or business plan | whole repo | verified; they're written as demo content (§6.9) |
-| No CI | no `.github/` | verified |
+| Disclaimer says "This is not financial advice" | `backend/app/config.py:10-14` | verified |
+| System prompt asks for personalised analysis with concrete tickers and percentages | `backend/app/advisor.py:17-26` | verified |
+| JWT secret falls back to `"dev-secret-change-me"` | `backend/app/config.py:4` | verified |
+| Risk profile has 6 fields; no knowledge/experience or loss capacity | `backend/app/models.py:29-40`, `backend/app/schemas.py:19-25`, `frontend/src/pages/Onboarding.jsx:26-31` | verified |
+| Profile upsert overwrites in place | `backend/app/routers/profile.py:12-20` | verified |
+| Only the latest analysis is exposed | `backend/app/routers/advice.py:31-38` | verified |
+| No account deletion | `backend/app/routers/auth.py` (signup, login, me) | verified |
+| `User` cascades to profile and holdings only; `Recommendation` has a bare FK and no cascade | `backend/app/models.py:20-25`, `:57-64` | verified (M2) |
+| No tests, no `version` file, no `.github/` | `git ls-tree HEAD` | verified (M2) |
+| `docs/product.md` describes behaviour and gaps | `docs/product.md` | **untracked**; it's committed in the v0.9.0 docs-only commit (M1) |
+| No privacy policy, terms or business plan | whole repo | verified; written as demo content |
 
-**External services, checked 4 Oct:** CELLAR works; Légifrance auth fails; the Mistral key only covers the models in §3.
-
-Nothing found contradicts the problem statement.
+Nothing contradicts the problem statement.
 
 ## 5. Options considered
 
-| Topic | Option | Pick |
+| Topic | Options | Pick |
 |---|---|---|
-| Backend runtime | **A. Python + PydanticAI** · B. Python + Mastra sidecar (two runtimes) · C. TS + Mastra (no Python) | **A** (agreed) |
-| Applicability | **Curated regulatory map + requirement packs** · vector search over the corpus | Curated |
-| Evidence selection | **Evidence hints + bounded agent tools** · embedding search over artifacts | Hints + tools |
-| Highlight location | **Quote → server-side lookup** · model returns offsets | Quote |
-| Agent shape | **Fixed workflow; one evaluator agent per requirement with a few read-only tools** · free-roaming multi-agent | Workflow |
+| Backend runtime | **Python + PydanticAI** · Python + Mastra sidecar · TS + Mastra | Python + PydanticAI |
+| Applicability | **Curated requirement pack** · vector search over the corpus | Curated |
+| Pack size | **~10 (W1–W8 + 2 controls)** · ~25 | ~10, grow after AC4 (B2) |
+| Evidence selection | **Evidence hints + bounded read-only tools** · embedding search over artifacts | Hints + tools |
+| Highlight location | **Quote → server-side lookup** · offsets from the model | Quote |
+| Review across releases | **Carry forward while the evidence fingerprint is unchanged** · re-review every run | Carry forward (B1) |
+| Fix plan | **Deterministic render from per-requirement templates** · LLM-written per item | Template (M3) |
+| Access control | **One deploy token + CI and MCP tokens, no accounts** · local only + tunnel | Deploy token (B3) |
+| Ingestion | **One path: ZIP + `compliance/*.md`** · PDF, URL, ZIP, repo_path | One path (M5) |
 
 ## 6. Design
 
 ### 6.1 Architecture
 
 ```
-React/Vite web ──REST + SSE──┐
-Claude Code ─────MCP─────────┤──▶ FastAPI app (one deployable)
-GitHub Action ───REST────────┘      ├─ Assessment workflow (plain async Python)
-                                    │    └─ Evaluator agent (PydanticAI + Mistral, read-only tools)
-                                    ├─ Activity recorder ── AgentEvent stream (SSE + Postgres)
-                                    ├─ LegalKnowledgeProvider
-                                    │    ├─ CellarProvider (SPARQL + REST)
-                                    │    ├─ LegifranceProvider (PISTE OAuth2)
-                                    │    └─ CorpusProvider (cached official texts [+ Legora])
-                                    ├─ MCP server (mcp SDK, Streamable HTTP, mounted at /mcp)
-                                    └─ Postgres + pgvector
+React/Vite web ──REST + SSE──┐  (deploy token)
+GitHub Action ───REST /ci────┤  (per-product CI token)
+Claude Code ─────MCP /mcp────┤  (MCP token)
+                             ▼
+                FastAPI app (single process)
+                 ├─ Assessment workflow (async Python, one in-flight run per product, global model queue)
+                 │    └─ Evaluator agent (PydanticAI + codestral, read-only tools confined to the release)
+                 ├─ Activity recorder → agent_events table → SSE (live and replay from the table)
+                 ├─ Legal layer: CellarProvider · CorpusCache (committed; incl. hand-curated CMF) · [LegifranceProvider: stretch]
+                 ├─ Fix-plan renderer (deterministic)
+                 ├─ MCP server (mcp SDK, Streamable HTTP, mounted at /mcp)
+                 └─ Postgres + pgvector
 ```
 
 ### 6.2 Domain model
 
 ```
-Organization ─┬─ Product ─┬─ RegulatoryProfile
-              │           └─ Release ─┬─ Artifact[]
-              │                       └─ Assessment[] ─┬─ Finding[] (one per Requirement)
-              │                                        │    ├─ EvidenceRef[] · citations → LegalProvision[]
-              │                                        │    ├─ Confidence · Remediation[] · Review[]
-              │                                        │    └─ produced_by → AgentEvent[]
-              │                                        └─ AgentRun ─ AgentEvent[]
-LegalSource ─ LegalDocument ─ LegalProvision ◀─ derived_from ─ Requirement (RequirementPack)
+Organization ─ Product ─┬─ RegulatoryProfile (seeded; confirmed on one form)
+                        └─ Release ─┬─ Artifact[] (compliance docs + code_repo)
+                                    └─ Assessment[] ─┬─ Finding[] (one per scoped Requirement)
+                                                     │    ├─ EvidenceRef[] · citations → LegalProvision[]
+                                                     │    └─ Review[] (append-only; may be carried)
+                                                     └─ agent_events[] (by run_id)
+LegalProvision ◀─ derived_from ─ Requirement (pack: statement, applies_when, severity, evidence hints, remediation template)
 ```
 
 | Entity | Key fields |
 |---|---|
-| `RegulatoryProfile` | `jurisdictions`, `industry`, `activities[]` (e.g. `investment_advice`, `portfolio_analytics`), `customer_types[]` (`retail`), `data_categories[]` (`identity`, `financial`), `ai_uses[]` (`personalised_recommendations`), `stage`, `confirmed_at` |
-| `Release` | `version`, `stage`, `source_ref` (git commit for code), `previous_release_id?` |
-| `Artifact` | `kind` (`business_plan\|product_spec\|privacy_policy\|terms\|security_policy\|regulatory_registration\|website\|code_repo\|other`), `source` (`upload\|url\|repo_path`), `text`, `files[]`, `status` |
-| `LegalProvision` | `id`, `source`, `jurisdiction`, `act_title`, `celex\|legi_id`, `article`, `paragraph?`, `text`, `source_url`, `retrieved_at` |
-| `Requirement` | `id`, `domain`, `statement`, `derived_from[]`, `applies_when`, `mandatory`, `default_severity`, `evidence_hints{artifact_kinds[], code_globs[]}`, `evidence_needed` |
+| `RegulatoryProfile` | `jurisdictions`, `industry`, `activities[]`, `customer_types[]`, `data_categories[]`, `ai_uses[]`, `stage`, `confirmed_at` |
+| `Release` | `version` (e.g. `0.9.0`, `1.0.0-rc.2`, `1.0.0`), `source` (`seed\|ui\|ci`), `git_sha`, `branch?`, `pr_number?`, `ci_run_url?`, `previous_release_id?` |
+| `Artifact` | `kind` (`business_plan\|product_spec\|privacy_policy\|terms\|regulatory_registration\|code_repo\|other`), `path`, `text` (redacted), `files[]` (code: path + redacted content), `sha256` |
+| `LegalProvision` | `id`, `source` (`cellar\|legifrance\|manual`), `jurisdiction`, `act_title`, `celex\|legi_id`, `article`, `paragraph?`, `text`, `source_url`, `retrieved_at`, `embedding vector(1024)` |
+| `Requirement` (pack) | `id`, `domain`, `statement`, `derived_from[]`, `applies_when`, `mandatory`, `severity`, `evidence_hints{artifact_kinds[], code_globs[]}`, `evidence_needed`, `remediation{parts[]}` (§6.11) |
 | `Assessment` | `release_id`, `status`, `pack_version`, `model`, `run_id`, timestamps |
-| `Finding` | `requirement_id`, `conclusion`, `severity`, `title`, `reasoning_summary`, `evidence[]`, `citations[]`, `confidence{applicability, evidence, finding}`, `remediation[]`, `attempts`, `validation_notes[]` |
+| `Finding` | `requirement_id`, `conclusion`, `severity` (copied from the requirement), `title`, `reasoning_summary`, `evidence[]`, `citations[]`, `confidence{applicability, evidence, finding}`, `attempts`, `validation_notes[]`, `evidence_fingerprint` |
 | `EvidenceRef` | `document_span{artifact_id, quote, start, end}` · `code{artifact_id, path, start_line, end_line, quote}` · `missing{artifact_kind}` |
-| `Review` | `finding_id`, `reviewer_name`, `decision` (`confirm\|override\|need_evidence\|not_applicable`), `override_conclusion?`, `override_severity?`, `comment`, `created_at` |
-| `AgentRun` | `id`, `kind` (`assessment\|profile_suggest\|mcp\|chat`), `subject_id`, `status`, `started_at`, `finished_at`, `totals{model_calls, tool_calls, retries, tokens_in, tokens_out}` |
-| `AgentEvent` | `run_id`, `seq`, `ts`, `type` (see §6.10), `step`, `requirement_id?`, `agent?`, `tool?`, `attempt?`, `summary`, `input_preview?`, `output_preview?`, `tokens?`, `latency_ms?`, `error?` |
+| `Review` | `finding_id`, `requirement_id`, `product_id`, `reviewer_name`, `decision` (`confirm\|override\|not_applicable\|need_evidence`), `override_conclusion?`, `comment`, `evidence_fingerprint`, `created_at`, `revoked_at?` |
+| `AgentEvent` | `run_id`, `run_kind` (`assessment\|mcp`), `seq`, `ts`, `type` (§6.10), `requirement_id?`, `tool?`, `attempt?`, `summary`, `input_preview?`, `output_preview?` (redacted, ≤ 2 KB), `tokens?`, `latency_ms?`, `error?` |
 
-### 6.3 Status model and launch gate (deterministic)
+`evidence_fingerprint` = sha256 of the sorted (path, quote) pairs of the finding's evidence, plus the sorted kinds of its `missing` refs.
+
+### 6.3 Status model, review carry-forward and launch gate (deterministic)
 
 - `conclusion`: `satisfied | potential_violation | insufficient_evidence | not_applicable | uncertain`
-- `severity`: `blocker | high | medium | low`
-- **Effective value:** the latest review override if there is one, otherwise the AI value. The AI's values are never changed after the fact.
+- `severity`: `blocker | high | medium | low`. It always comes from the requirement, never from the model.
+- **Applicable review** for a finding: the latest non-revoked `Review` on that finding. Otherwise, the latest non-revoked review for the same product and `requirement_id` whose `evidence_fingerprint` equals the finding's (**carried**, shown as "carried from vX by <name>") (B1).
+- **Effective conclusion:** the applicable review's override (`not_applicable` → not_applicable; `confirm` → the AI value), otherwise the AI value. AI values are immutable.
+- `uncertain` covers both the model's own uncertainty and validation failure or limit exhaustion (§6.4).
 
 ```
 gate(release) =
   NOT_READY        if any effective (potential_violation ∧ blocker)
                    or any mandatory requirement effectively insufficient_evidence
-  REVIEW_REQUIRED  else if any effective (potential_violation ∧ high) or any unreviewed uncertain finding
+  REVIEW_REQUIRED  else if any effective (potential_violation ∧ high)
+                   or any uncertain finding with no applicable review
   READY            otherwise
 ```
 
+**Labels (M8):** every gate surface (UI, PR comment, MCP) shows "AI pre-assessment, not legal advice" and "counsel-reviewed n/m". READY with no applicable review on any finding is labelled **"Ready (AI)"**.
+
+**Changes since previous** (m2): readiness includes `changes_since_previous{resolved[], new[], unchanged[]}`, keyed by `requirement_id` against `previous_release_id`.
+
 ### 6.4 Assessment pipeline
 
-| # | Step | Done by | Activity events |
+| # | Step | Done by | Events |
 |---|---|---|---|
-| 1 | Load the profile and artifacts | code | `step_*` |
-| 2 | **Scope:** `applies_when` predicates → requirements | code | `scope_result` (n requirements, per domain) |
-| 3 | **Resolve the legal basis** (`derived_from` provisions) | LegalKnowledgeProvider | `tool_call`/`tool_result` per fetch (source, cache hit/miss) |
-| 4 | **Collect evidence** by hints | code | `evidence_bundle` (artifacts, files, missing kinds) |
-| 5 | **Evaluate** each requirement | **PydanticAI evaluator agent** (`output_type=FindingCandidate`) with read-only tools: `read_artifact(artifact_id, section?)`, `grep_code(pattern, glob?)`, `read_file(path, start, end)`, `get_provision(id)`. **Max 6 tool calls per requirement.** | `model_request`, `tool_call`, `tool_result`, `model_response` |
-| 6 | **Validate** in the `@output_validator`. On failure, raise `ModelRetry(errors)` so PydanticAI retries with the errors (`output_retries=2`). | code | `validation_failed`, `retry` |
-| 7 | On final failure, persist `uncertain` with `validation_notes` | code | `finding_emitted` |
-| 8 | **Synthesize** the gate and coverage | code | `gate_computed` |
+| 1 | Load profile + artifacts; acquire the per-product run lock | code | `step` |
+| 2 | **Scope**: `applies_when` → requirements; the out-of-scope ones become `not_applicable` findings with no model call | code | `scope` |
+| 3 | **Legal basis**: resolve `derived_from` from the cache (CELLAR fetch on a miss) | legal layer | `tool_call`/`tool_result` |
+| 4 | **Evidence bundle** per requirement from its hints; missing kinds noted | code | `step` |
+| 5 | **Evaluate** (`output_type=FindingCandidate`, `temperature=0`). Tools: `read_artifact(artifact_id, section?)`, `grep_code(fixed_string, glob?)`, `read_file(path, start, end)`, `get_provision(id)`. All confined to the release; `UsageLimits` caps tool calls at 6 per requirement. | PydanticAI + codestral | `model_request`, `model_response`, `tool_call`, `tool_result` |
+| 6 | **Validate** in `@output_validator`; on failure, `ModelRetry(errors)` (`output_retries=2`) | code | `retry` (with the errors) |
+| 7 | Persist the finding. Validation exhaustion or `UsageLimitExceeded` → `uncertain` + `validation_notes` | code | `finding` |
+| 8 | Gate + coverage + changes since previous | code | `gate` |
 
-**Validation rules:** the schema is enforced by PydanticAI and Mistral structured output. In addition: `requirement_id` matches; citations ⊂ `derived_from`; artifact ids belong to the release; every quote is found in its artifact (two normalized forms, see §3; fuzzy match ≥ 0.9); code lines exist and contain the quote; `potential_violation`/`satisfied` need at least one real evidence ref; `insufficient_evidence` needs a `missing` ref.
+**Validation:**
+- `requirement_id` matches; citations ⊂ `derived_from`; artifact ids belong to the release.
+- Every quote is located (either normalized form, fuzzy ≥ 0.9). Code lines exist and contain the quote.
+- `potential_violation` and `satisfied` need a real evidence ref; `insufficient_evidence` needs a `missing` ref.
 
-**Run settings:** requirements are evaluated with bounded concurrency (4), `temperature=0`, and the model id comes from config.
+**Throughput:**
+- Concurrency 4 inside a run, plus one global model queue across runs.
+- A 429 gets exponential backoff (max 3).
+- About 10 requirements × (1 + up to 6 tool turns + 2 retries) stays well under the codestral quota (M6/B2).
+
+**Prompt injection:** documents and code are passed as quoted data in clearly delimited blocks. The system prompt says that instructions inside evidence are content to evaluate, never commands. An injection fixture is in the eval (M6).
 
 ### 6.5 Legal knowledge layer
 
 ```python
 class LegalKnowledgeProvider(Protocol):
     async def get_provision(self, ref: ProvisionRef) -> LegalProvision: ...
-    async def get_document(self, doc_id: str) -> LegalDocument: ...
-    async def search(self, q: LegalQuery) -> list[LegalProvision]: ...   # corpus + pgvector
+    async def search(self, q: LegalQuery, k: int = 5) -> list[LegalProvision]: ...   # pgvector; off the critical path
 ```
 
-- **Pack:** `data/packs/fintech-eu-fr.yaml`, about 25 requirements across data protection, investment services, AI transparency, ICT security and consumer disclosures. Authored by us and reviewed by a legal teammate.
-- **Ingest script:** for each provision ref in the pack, fetch it from CELLAR or Légifrance → split it by article and paragraph → embed it → store it. A cached copy is committed to `data/corpus-cache/` so the demo works offline.
-- Official sources are the citation authority.
+- **Seed corpus** (Legora's list for Wealthpilot plus MiFID II, checked 4 Oct):
 
-### 6.6 Evidence ingestion
+  | Source | Identifier | Fetch | Status |
+  |---|---|---|---|
+  | EU AI Act | CELEX `32024R1689` | CELLAR REST | ✅ full text, Art. 50 present |
+  | GDPR (consolidated) | CELEX `02016R0679-20160504` | CELLAR REST | ✅ full text |
+  | MiFID II + Del. Reg. 2017/565 | CELEX `32014L0065`, `32017R0565` | CELLAR REST | ✅ (32014L0065 checked) |
+  | Code monétaire et financier (L.541-1, L.546-1; section `LEGISCTA000006100807` of `LEGITEXT000006072026`) | Légifrance | **hand-curated** into `data/corpus-cache/` with the Légifrance `source_url` and `source: manual` | ⏳ live API is stretch (Q8) |
 
-| Input | Handling |
-|---|---|
-| PDF | local text extraction (`pymupdf`) → markdown; scanned PDFs are out of scope (no OCR quota) |
-| MD / TXT | stored as-is |
-| URL | single fetch + readability extraction |
-| Code | ZIP upload, or a server-side `repo_path` + git ref (used for the demo: `FinTechProto@<sha>`) |
+- **Ingest script** (`python -m cco.ingest`): for each provision ref in the pack, fetch it from CELLAR, split by article and paragraph, embed with `mistral-embed`, and store. Its output is committed to `data/corpus-cache/` so the demo runs offline. Official sources are the citation authority. Legora documents aren't used in V1 (Q5).
+- **Pack** `data/packs/fintech-eu-fr.yaml`: **W1–W8 plus 2 controls** (§6.9), each with a remediation template. A legal teammate signs off the pack and the citations at a gate before AC4 counts (M8). The pack grows only after AC4 passes (B2).
+- **pgvector search** backs the legal-basis drawer's "related provisions" and nothing on the audit path (T7).
 
-Out of scope: images, spreadsheets, Drive, Notion, data rooms, GitHub OAuth.
+### 6.6 Evidence ingestion: one path (M5)
+
+**The bundle:** a ZIP of the code plus `compliance/*.md`, sent with an artifact-kind map. CI, the UI upload ("New release") and the seed all use the same service.
+
+**Hardening:**
+- Limits: ≤ 50 MB compressed, ≤ 200 MB uncompressed, ≤ 5 000 files, compression ratio ≤ 1:100.
+- Reject absolute paths, `..`, symlinks and device files. Extract to a temp directory. **Nothing is ever executed or installed.**
+- Always excluded server-side: `.env*`, `*.pem`, `*.key`, `id_*`, `node_modules/`, `.git/`, binaries.
+- A **secret redactor** (key-shaped regexes + an entropy check) runs on all stored artifact text and on every activity preview.
+
+**Code globs and the document list** are configured **per product on the CCO server**, never taken from the upload (M6). A bundle missing a file that a requirement's hints point to is still assessed, and that requirement becomes `insufficient_evidence`.
+
+**Demo upload folder** (Roman's request): `demo/wealthpilot/{v0.9.0,v1.0.0}/upload/` holds ready-to-upload bundles, `code.zip` plus `compliance/*.md`. They're generated by `make demo-bundles` from the FinTechProto tags with `git archive` (tracked files only), so the UI demo uploads exactly what CI sends.
 
 ### 6.7 Frontend
 
 **User journeys → pages**
 
-| Journey | Persona | Path through the pages |
+| Journey | Persona | Path |
 |---|---|---|
-| A. Define what we're launching | Founder | Onboarding: Company → Product → Profile (AI suggests, user confirms) → Evidence |
-| B. Can I launch? | Founder | Overview → **Run assessment** → **live agent activity** → gate + blockers |
-| C. Investigate a blocker | Founder | Finding workspace → document highlight ↔ code lines ↔ legal drawer ↔ **"How this was produced"** |
-| D. Counsel review | Counsel | Reviews queue → Finding → decision → gate updates |
-| H. Release gate in CI | Developer | Push fixes to `dev` → open release PR `dev → main` → **CCO check** runs → PR comment shows gate, blockers and a link to the CCO → fix → check turns green → merge + tag `v1.0.0` → the release appears in the CCO with `source: ci` |
-| G. Fix and re-release | Founder → Developer | Findings (multi-select) → **Generate fix plan** → copy as a Claude Code prompt / download `.md` / MCP `get_remediation_plan` → code fixed → **New release** (git ref) → Run assessment → "What changed" |
-| E. Show progress | Founder | Release switcher v0.9.0 → v1.0.0 → "What changed" |
-| F. Developer check | Developer | Claude Code → MCP; the calls show up in Activity |
+| A. Confirm what we're launching | Founder | `/profile`: one form, seeded values, Confirm |
+| B. Can I launch? | Founder | Overview → **Run assessment** → **live activity panel** → gate + blockers |
+| C. Investigate a blocker | Founder | Finding workspace: document highlight ↔ code lines ↔ legal-basis drawer ↔ "How this was produced" |
+| D. Counsel review | Counsel (toggle) | Finding workspace → inline Confirm / Override / Not applicable / Need evidence → gate updates |
+| G. Fix and re-release | Founder → developer | Overview → **Fix plan** (preview, copy, download) → fixes → New release (upload bundle) → Run → "What changed" |
+| H. Release gate in CI | Developer | Push to `dev` → release PR → CCO check posts the gate + blockers → red → fixes → green → merge + tag → release appears in the CCO |
+| F. Developer check | Developer | Claude Code → MCP (4 tools) |
 
-**Routes** (everything under `/o/:org/p/:product/r/:release`):
+**Routes** (flattened, one seeded org and product, M10):
 
 | Route | Page |
 |---|---|
-| `/onboarding` | Stepper |
-| `…/overview` | Gate card, coverage by domain, top blockers, "What changed", latest run summary |
-| `…/evidence`, `…/evidence/:artifactId` | Evidence room; document or code viewer with highlights |
-| `…/findings`, `…/findings/:findingId` | List with filters; **three-pane workspace** with tabs: *Finding · Legal basis · How this was produced* |
-| `…/reviews` | Counsel queue |
-| `…/fix-plan` | Fix-plan builder: chosen findings, preview, target switch (*Coding agent* / *Founder checklist*), copy / download |
-| `…/activity`, `…/activity/:runId` | **Agent activity:** runs list (assessment, MCP, chat) and the run timeline |
-| `…/releases` | Release list and compare |
+| `/profile` | Profile confirm form |
+| `/r/:release/overview` | Gate card + labels, coverage by domain, blockers, "What changed", latest run (opens the activity panel), Fix plan button |
+| `/r/:release/evidence`, `/r/:release/evidence/:artifactId` | Bundle contents; document or code viewer with highlights |
+| `/r/:release/findings`, `/r/:release/findings/:findingId` | List with status chips; three-pane workspace with tabs *Finding · Legal basis · How this was produced* and an inline review panel |
+| `/releases` | Release list (seed, ui, ci badges), New release (upload) |
 
-**Global elements:** context header with the release switcher, stage pill, **Run assessment** button and persona toggle; legal-basis drawer; ⌘K palette; stretch **Ask CCO** drawer (assistant-ui → `/api/assistant`).
+**Global elements:**
+- Header: release switcher, stage pill (Operating and Scaling "coming soon"), **Run assessment**, persona toggle (Founder ⇄ Counsel).
+- Legal-basis drawer.
+- Activity panel (slide-over).
+- A one-time deploy-token prompt, stored in `localStorage`.
 
-**Design language:** restrained (Linear/Stripe feel). One accent color; everything else colored by status meaning. Effort goes on the release-switch transition, the live activity timeline, highlight ↔ finding linking, and the drawers. A short design-tokens spec (`docs/design.md`) gets written before any UI task.
+**Design:** restrained (Linear/Stripe feel). One accent color; everything else colored by status meaning. Effort goes on the release-switch transition, the live activity timeline, highlight ↔ finding linking, and the drawers. Design tokens go into `docs/design.md` in T01.
 
 ### 6.8 Surfaces
 
-- **REST** (`/api`, OpenAPI generated by FastAPI; frontend types generated with `openapi-typescript`):
-  - Setup: `POST /organizations` · `POST /organizations/{id}/products` · `PUT /products/{id}/profile` · `POST /products/{id}/profile/suggest` · `POST /products/{id}/releases` · `GET /releases/{id}`
-  - Evidence: `POST /releases/{id}/artifacts` (multipart) · `POST /releases/{id}/artifacts/url` · `POST /releases/{id}/artifacts/repo` · `GET /artifacts/{id}`
-  - Assessment: `POST /releases/{id}/assessments` → 202 · `GET /assessments/{id}` · `GET /releases/{id}/readiness` · `GET /assessments/{id}/findings` · `GET /findings/{id}` · `POST /findings/{id}/reviews`
-  - Activity: `GET /runs?release_id=` · `GET /runs/{id}` · `GET /runs/{id}/events` (SSE, replays persisted events and then streams live ones) · `GET /findings/{id}/trace`
-  - Fix plan: `POST /assessments/{id}/remediation-plans` (body: `finding_ids?`, `min_severity?`, `target: coding_agent|founder`) → `{id, markdown, items[]}` · `GET /remediation-plans/{id}` · `GET /remediation-plans/{id}.md`
-  - Other: `GET /provisions/{id}` · `GET /releases/{a}/compare/{b}` · `POST /assistant/messages` (stretch)
-- **MCP** (`/mcp`, Streamable HTTP, static bearer token): `get_product_profile`, `get_release_readiness`, `list_findings`, `get_finding`, `get_legal_basis`, `run_assessment`, `get_remediation_plan(release_id, min_severity?, scope?)`. Stretch: `assess_change`. Every call is recorded as an `AgentRun(kind=mcp)`.
-- **CI** (see §6.12): `POST /ci/assessments` (multipart: repo ZIP, compliance documents, metadata) → `{assessment_id, release_id, url}`; then poll `GET /assessments/{id}`. Authenticated with a per-product **CI token** (`Authorization: Bearer`), which is the only real auth in V1.
+**REST** (`/api`, OpenAPI from FastAPI, frontend types via `openapi-typescript`, **deploy token** `Authorization: Bearer $CCO_DEPLOY_TOKEN`, B3):
+- Profile: `GET /product`, `PUT /product/profile`
+- Releases and evidence: `GET /releases`, `POST /releases` (multipart bundle, `version`), `GET /releases/{id}`, `GET /artifacts/{id}`
+- Assessment: `POST /releases/{id}/assessments` → 202 (409 if a run is in flight), `GET /assessments/{id}`, `GET /releases/{id}/readiness` (gate, labels, coverage, `changes_since_previous`), `GET /assessments/{id}/findings`, `GET /findings/{id}`, `POST /findings/{id}/reviews`, `POST /reviews/{id}/revoke`
+- Activity: `GET /runs/{id}/events?requirement_id=&after_seq=` (SSE: replays from the table, then follows live; live and replay share this path)
+- Fix plan: `GET /assessments/{id}/fix-plan.md`
+- Legal: `GET /provisions/{id}`, `GET /provisions/{id}/related`
+- Ops: `GET /healthz` (no auth)
+
+**CI** (`/ci`, per-product CI token): `POST /ci/assessments` (multipart: bundle, `version`, `head_sha`, `branch`, `pr_number?`, `run_url`) → `{assessment_id, release_id, readiness_url}`, then poll `GET /ci/assessments/{id}` → readiness + rendered comment Markdown + fix-plan URL.
+
+**MCP** (`/mcp`, Streamable HTTP, `CCO_MCP_TOKEN` env only, constant-time compare, m4): `get_release_readiness(version?)`, `list_findings(version?, severity?, conclusion?)`, `get_finding(id)`, `get_remediation_plan(version?)`. Each returns the same data as REST, and the plan is the same rendered Markdown. Each call writes `agent_events` with `run_kind=mcp` and the client name (never the token). Stretch: `run_assessment`, which shares the run lock and queue.
 
 ### 6.9 Demo dataset: Wealthpilot (FinTechProto)
 
 **Wealthpilot:** a French startup giving retail investors AI-generated, personalised portfolio recommendations (Mistral), from a risk questionnaire and holdings they enter by hand. No trade execution. Pre-launch in France.
 
-**Releases** (branch model in §6.12):
-- **v0.9.0** = `main`, tagged `v0.9.0`. It includes `compliance/business-plan.md` and `compliance/terms.md`, and has no privacy policy on purpose.
-- **v1.0.0** = `dev`, which accumulates the fix-plan commits, merged through the release PR and tagged `v1.0.0`. It adds `compliance/privacy-policy.md` and `compliance/cif-registration.md` and updates `terms.md`.
+**Releases and branches (M1):**
 
-**Demo documents** live **in the FinTechProto repo** under `compliance/`, so CI sees the code and documents together. `README.md` and `docs/product.md` are also evidence. `docs/product.md` is currently untracked and has to be committed to `main` before tagging `v0.9.0`.
+**`v0.9.0`** = `ae1c4e5` + **one docs-only commit** on `main`, done by a human gate:
+- It adds `docs/product.md`, `compliance/business-plan.md`, `compliance/terms.md` and a `version` file.
+- `git diff ae1c4e5 v0.9.0 -- backend frontend` is empty, so every line reference holds.
 
-**Golden findings** (legal references to be verified by a legal teammate):
+**`dev`** accumulates the fix-plan commits in two pushes:
+1. **Partial:** items 3–6 + A2 (privacy policy) + A3 (terms). Still red with W1 and W2 open.
+2. **Full:** items 1–2 + A1 (CIF registration). Green.
 
-| ID | Requirement (legal basis) | Evidence in v0.9.0 | v0.9.0 expected | v1.0.0 fix → expected |
-|---|---|---|---|---|
-| W1 | Personalised investment advice requires an authorised status: CIF registered with ORIAS (MiFID II Art. 4(1)(4); CMF L.541-1, L.546-1) | `config.py` disclaimer says "not financial advice", while the `advisor.py:17-26` system prompt asks for personalised buy/sell calls with tickers and percentages; README "check whether CIF is required" | 🔴 blocker | CIF registration doc + accurate status wording in UI and terms → 🟢 |
-| W2 | Suitability assessment covers knowledge and experience, financial situation including ability to bear losses, and objectives (MiFID II Art. 25(2); Del. Reg. 2017/565 Art. 54) | The onboarding questionnaire (6 questions) has no knowledge/experience or loss-capacity questions | 🔴 blocker | Questions added and passed to the advisor, which refuses advice when the product isn't suitable → 🟢 |
-| W3 | Pre-contractual information on processing (GDPR Art. 13) | No privacy policy provided | 🔵 insufficient_evidence (mandatory → NOT_READY) | Privacy policy added → 🟢 |
-| W4 | Advice based on up-to-date client information (Del. Reg. 2017/565 Art. 54(7)) | Profile edits don't invalidate the existing analysis (`product.md` §3, §10) | 🟠 high | Analysis flagged outdated on profile change → 🟢 |
-| W5 | Right to erasure (GDPR Art. 17) | No account deletion (`product.md` §10) | 🟠 high | `DELETE /api/account` + UI → 🟢 |
-| W6 | Security of processing (GDPR Art. 32) | `config.py` falls back to `JWT_SECRET="dev-secret-change-me"` | 🟠 high | App refuses to start without a secret → 🟢 |
-| W7 | Suitability report given to the client (MiFID II Art. 25(6)) | Past analyses are stored but can't be viewed | 🟡 medium | Analysis history page → 🟢 |
-| W8 | Transparency for AI interacting with people (AI Act Art. 50) | AI-generated content is labelled in the UI, but this is no chatbot | ◌ uncertain → counsel decides on stage | carried forward |
+A human merges the release PR and tags `v1.0.0` (gate tasks).
 
-v0.9.0 → **Not ready** (2 blockers, 1 mandatory requirement missing evidence, 3 high). v1.0.0 → **Ready**.
+**Prep:** a pytest scaffold for FinTechProto, needed by the fix plan's tests, is committed on `dev` first (M2).
 
-### 6.10 Agent-activity layer
+**Fiction markers (M8):** every `compliance/*.md` starts with a "FICTIONAL DEMO DOCUMENT" banner. The ORIAS number is `00000000`.
 
-**Event types:** `run_started`, `step_started`, `step_finished`, `scope_result`, `evidence_bundle`, `model_request`, `model_response`, `tool_call`, `tool_result`, `validation_failed`, `retry`, `finding_emitted`, `gate_computed`, `run_finished`, `run_failed`.
+**Pack and golden expectations:** `demo/wealthpilot/expected.yaml` gives **every** requirement's expected conclusion for v0.9.0, the partial-fix rc and v1.0.0 (B2). Legal references are signed off by a legal teammate at a gate (M8).
 
-**How events are recorded:** a single `ActivityRecorder` writes events to Postgres and publishes them to an in-process pub/sub that feeds the SSE stream.
-- The workflow emits step events.
-- PydanticAI agent runs are wrapped by iterating the agent graph (`agent.iter()`) and mapping each node and tool call to events.
-- MCP handlers emit events through a decorator.
+| ID | Requirement (legal basis) | Evidence at v0.9.0 | Severity | v0.9.0 | partial rc | v1.0.0 |
+|---|---|---|---|---|---|---|
+| W1 | Personalised investment advice requires CIF status registered with ORIAS (MiFID II Art. 4(1)(4); CMF L.541-1, L.546-1) | `config.py:10-14` says "not financial advice"; `advisor.py:17-26` asks for tickers and percentages | blocker | 🔴 potential_violation | 🔴 | 🟢 satisfied |
+| W2 | Suitability: knowledge/experience, financial situation incl. loss capacity, objectives (MiFID II Art. 25(2); Del. Reg. 2017/565 Art. 54) | Only 6 profile fields | blocker | 🔴 | 🔴 | 🟢 |
+| W3 | Information on processing (GDPR Art. 13), **mandatory** | No privacy policy | high | 🔵 insufficient_evidence → NOT_READY | 🟢 | 🟢 |
+| W4 | Advice on up-to-date client information (Del. Reg. 2017/565 Art. 54(7)) | `profile.py:12-20` overwrites; the analysis isn't invalidated | high | 🟠 | 🟢 | 🟢 |
+| W5 | Right to erasure (GDPR Art. 17) | No deletion; recommendations aren't cascaded | high | 🟠 | 🟢 | 🟢 |
+| W6 | Security of processing (GDPR Art. 32) | `config.py:4` default secret | high | 🟠 | 🟢 | 🟢 |
+| W7 | Suitability report to the client (MiFID II Art. 25(6)) | `advice.py:31-38` latest only | medium | 🟡 | 🟢 | 🟢 |
+| W8 | AI transparency (AI Act Art. 50) | AI output labelled; no chatbot | medium | ◌ uncertain → counsel "not applicable" on stage | ◌ carried (fingerprint unchanged) | ◌ carried |
+| C1 | No trade execution or holding of client funds; payment-services authorisation not triggered (control) | README/product.md: read and advise only | high | ⚪ not_applicable | ⚪ | ⚪ |
+| C2 | Passwords stored hashed (GDPR Art. 32, control) | bcrypt in `auth.py` | medium | 🟢 satisfied | 🟢 | 🟢 |
 
-**Data hygiene:** previews are capped at 2 KB, and secrets and `.env` values are never logged.
+**Expected gates:**
+- **v0.9.0:** NOT_READY (2 blockers, 1 mandatory missing evidence, 3 high).
+- **Partial rc:** NOT_READY (2 blockers).
+- **v1.0.0:** READY with W8 carried, so it shows "counsel-reviewed 1/10" rather than "Ready (AI)".
+
+**W8 carry-forward (B1):** carry-forward applies only while W8's fingerprint is unchanged. W8's evidence cites the UI labels, and items 1–2 touch `config.py` and `advisor.py`, not the labels, so the fingerprint should hold. The eval checks this. If the fingerprint changes, counsel re-reviews on stage, which is a valid fallback.
+
+### 6.10 Agent-activity layer (slimmed, M9)
+
+**Event types:**
+- `step`, `scope`
+- `model_request`, `model_response`
+- `tool_call`, `tool_result`
+- `retry` (with the validator errors)
+- `finding`, `gate`
+- `run_end` (ok or failed)
+
+**Storage and streaming:** one `agent_events` table. The recorder inserts rows. SSE reads by `seq` with `after_seq`, polling at 250 ms, so live and replay share one code path and there's no pub/sub. **Replay** paces stored events by their recorded `ts` gaps.
+
+**Capture:**
+- The PydanticAI run is iterated with `agent.iter()`, and nodes and tool calls are mapped to events.
+- MCP handlers record their calls through a decorator.
+- Previews are redacted (§6.6) and capped at 2 KB.
 
 **UI:**
-- **Live run panel:** opens when Run assessment is clicked. A vertical timeline grouped by step, then by requirement. Each tool call is a row with tool name, short args, latency and status, and it expands to show the input and output JSON. Retries show in amber with the validator's errors. A header shows counters (requirements done / total, model calls, tool calls, retries, tokens, elapsed) and a step progress bar.
-- **Finding → "How this was produced":** the same timeline, filtered to the finding's `requirement_id`, so you can follow the evidence the agent read and the provision it pulled.
-- **Activity page:** the history of runs, including MCP calls from Claude Code.
-- **Replay mode:** plays back a stored run's events at their recorded timing. This is the same stream, which is why the fallback stays honest.
+- **Live panel:** grouped by step, then by requirement. Tool rows expand to input/output; retries show in amber with the validator's errors. A header shows counters and a progress bar.
+- **"How this was produced":** the same component, filtered by `requirement_id`.
 
-### 6.11 Fix plan (remediation spec)
+### 6.11 Fix plan: deterministic (M3)
 
-**Purpose:** turn the open findings of an assessment into a spec that a coding agent or a developer can act on without re-reading the whole assessment. It's the bridge from one release to the next.
+**Template:** each requirement in the pack carries `remediation.parts[]`. Each part has:
+- `kind`: `code`, `document` or `organisational`
+- `title`, `required_change`
+- `locations`: globs or `path:line` anchors, resolved against the release
+- `boundaries`: the files it may touch
+- `done_when[]`
+- `depends_on?` (part ids)
 
-**Model:** `RemediationPlan{id, assessment_id, release_id, target, created_at, items[], markdown}`. Each `RemediationItem` has:
-- `finding_id`, `requirement_id`, `severity`
-- `kind`: `code | document | organisational`
-- `problem`
-- `legal_basis`: citations with `source_url`
-- `locations`: `path:line` ranges and document quotes
-- `required_change`
-- `done_when`: observable checks; the last one is always "re-assessment marks `<requirement_id>` satisfied"
-- `boundaries`: files the change may touch, and what must not change
+**Render:** `GET /assessments/{id}/fix-plan.md` renders the parts of every requirement whose effective conclusion is open (not satisfied or not applicable).
+- **Problem, locations and legal basis** come from the validated finding.
+- **Required change, boundaries and done_when** come from the template.
+- **No LLM call.** The output is identical across UI, CI and MCP.
 
-**Generation:** mostly deterministic. The plan is templated from the findings (problem, locations, legal basis and done-when come straight from validated data). One PydanticAI call per item writes `required_change`, with typed output (`RemediationDraft`) and the same validator: it may only reference the finding's locations. No new legal claims are made in the plan.
+**Layout:**
+1. Context: product, release, gate and labels.
+2. Rules for the coding agent.
+3. One section per `code` part, ordered blocker → medium, with dependencies noted.
+4. An appendix with the `document` and `organisational` parts, for the founder.
+5. How to verify.
 
-**Markdown layout** (target `coding_agent`):
-1. Context: product, release, assessment id, gate.
-2. Rules for the agent:
-   - Fix only the listed items.
-   - Touch only the files under each item's boundaries.
-   - Add or adjust tests.
-   - Don't change unrelated behaviour.
-3. One section per `code` item, ordered blocker → high → medium.
-4. An appendix listing the `document` and `organisational` items, for information only; the agent doesn't do these.
-5. How to verify: create a new release in the CCO and run an assessment, or call MCP `run_assessment`.
+**Golden example:** `demo/wealthpilot/v0.9.0/remediation-plan.md`. AC12 asserts the rendered plan against it, item for item: ids, kinds, locations and boundaries.
 
-**Target `founder`:** a plain checklist of the same items, grouped by kind.
+### 6.12 CI release gate (hardened, M6)
 
-**Golden example:** `demo/wealthpilot/v0.9.0/remediation-plan.md`. It's what the v1.0.0 branch of FinTechProto is built from.
-
-### 6.12 CI release gate
-
-**Idea:** compliance documents live in the product repo next to the code (`compliance/` folder: business plan, terms, privacy policy, registrations). Every release candidate is assessed as a whole, code and documents together, and the result gates the merge.
-
-**In the product repo (FinTechProto):**
-- `compliance/cco.yaml`: `product_id`, `api_url`, the list of document paths and their artifact kinds, code include/exclude globs.
+**In FinTechProto:**
+- `compliance/cco.yaml` holds only `product_id` and `api_url`. The globs and document list live on the CCO server.
 - `.github/workflows/compliance.yml`:
-  - **Triggers:** `pull_request` to `main` (the release PR from `dev`), `push` of tags `v*`, and `workflow_dispatch`.
+  - **Triggers:** `pull_request` to `main` (never `pull_request_target`), `push` of tags `v*`, `workflow_dispatch`.
+  - `permissions: {contents: read, pull-requests: write}`.
   - **Steps:**
-    1. Check out the code.
-    2. Zip the code (respecting the globs).
-    3. Run `scripts/cco_check.py` (stdlib only, ~100 lines). It uploads the ZIP, the documents, the version (tag, or the `version` file on a PR) and the git SHA.
-    4. The script polls the assessment until it finishes (timeout 10 min), writes `$GITHUB_STEP_SUMMARY`, and posts or updates a single PR comment with `gh`.
-    5. The script exits: `NOT_READY` → 1 (check fails); `REVIEW_REQUIRED` → 0 with a warning annotation; `READY` → 0.
-- **Secrets:** `CCO_API_URL` and `CCO_CI_TOKEN`. The Mistral key stays on the CCO server and never goes to CI.
+    1. `GET /healthz`.
+    2. `git archive HEAD` → bundle.
+    3. `scripts/cco_check.py` (stdlib only) sends the bundle with `head_sha` (`github.event.pull_request.head.sha` on PRs).
+    4. Poll (10-minute timeout).
+    5. Write `$GITHUB_STEP_SUMMARY`.
+    6. **Upsert one PR comment**, found by a hidden marker `<!-- cco-check -->`.
+    7. Upload the fix plan as a workflow artifact.
+  - **Exit codes:**
 
-**PR comment / summary format:**
-```
-CCO compliance check · v1.0.0-rc (a1b2c3d) · ❌ NOT READY
-2 blockers · 1 missing evidence · 3 high · 27 requirements evaluated
-🔴 FR-SUITABILITY-01  Suitability assessment incomplete   backend/app/schemas.py:19
-🔴 FR-CIF-STATUS-01   Wording contradicts advice given     backend/app/config.py:10
-🔵 GDPR-INFO-01       No privacy policy in compliance/
-Changes since v0.9.0: 3 resolved · 0 new
-→ Full report · Fix plan (.md)   [links to the CCO UI]
-```
-The fix plan for the failing release is attached as a workflow artifact, so a developer or Claude Code can pick it up right away.
+    | Code | Meaning | Check shows |
+    |---|---|---|
+    | 1 | NOT_READY | failure |
+    | 0 | READY or REVIEW_REQUIRED | success; REVIEW_REQUIRED adds a warning annotation |
+    | **2** | CCO unreachable, auth error or timeout | a neutral "CCO unavailable" summary, **never** "NOT READY" |
+
+- **Secrets:** `CCO_API_URL` and `CCO_CI_TOKEN`. The Mistral key never leaves the CCO server.
+
+**Human gate tasks:**
+- Branch protection on FinTechProto `main`, with `compliance` as a required check.
+- CODEOWNERS for `.github/` and `compliance/`.
+- The tags and the release-PR merge.
 
 **In the CCO:**
-- CI runs create a `Release` with `source: ci`, `git_sha`, `branch`, `pr_number` and `ci_run_url`.
-  - A run for a PR creates a release candidate (`v1.0.0-rc.N`).
-  - A tag promotes the candidate to `v1.0.0`.
-- The release list shows the CI badge and its history.
-- The activity page shows the CI runs like any other run.
+- The server names the release:
+  - a PR run → `<version>-rc.N`, where N counts per (product, version);
+  - a tag run → a fresh assessment that creates `<version>`, with `previous_release_id` = the latest rc.
+- Comment and summary text are rendered by the server from readiness, with labels and changes since the previous release.
 
-**Demo branch model (FinTechProto):**
-- `main` @ `ae1c4e5`, tagged `v0.9.0`.
-- `dev` accumulates the fix-plan commits in two batches:
-  1. Items 3–6 and A2–A3 → the release PR is still **red** (the two blockers remain).
-  2. Items 1–2 and A1 → **green**.
-- Merge, then tag `v1.0.0`.
-- Recorded run URLs of both checks are kept as a stage fallback.
+**PR comment example:** generated from `expected.yaml` for the partial state (m5). It's also the AC13 snapshot:
 
-**Requirement:** the CCO API has to be reachable from GitHub. Either deploy it (Q3), or use a tunnel (`cloudflared`) during the demo.
+```
+<!-- cco-check -->
+CCO compliance check · 1.0.0-rc.1 (a1b2c3d) · ❌ NOT READY · AI pre-assessment, not legal advice
+2 blockers · 0 missing evidence · 0 high · 10 requirements evaluated · counsel-reviewed 1/10
+🔴 W2 Suitability assessment incomplete      backend/app/schemas.py:19
+🔴 W1 Product wording contradicts advice     backend/app/config.py:10
+Changes since 0.9.0: 5 resolved · 0 new
+→ Full report · Fix plan (.md)
+```
 
-## 7. Interfaces and contracts (frozen by the first task, T01)
+**Reachability:** decided in W1 (Q3). The preference is a deployed app with the deploy token. The fallback is a **named** cloudflared tunnel with a fixed hostname. Rehearse a CI run and a web run at the same time.
+
+### 6.13 Security and operability (B3, M5, m3, m4)
+
+**Tokens** (all from env, never committed; rotate after the demo):
+
+| Token | Scope |
+|---|---|
+| `CCO_DEPLOY_TOKEN` | all `/api` routes |
+| `CCO_CI_TOKEN_<PRODUCT>` | `/ci` |
+| `CCO_MCP_TOKEN` | `/mcp` |
+
+`/healthz` is the only route without auth.
+
+**Abuse limits:**
+- One in-flight assessment per product (409 otherwise).
+- A global model queue.
+- Upload limits (§6.6).
+- No server-side path or URL ingestion.
+
+**Demo ops:**
+- `make demo-reset` drops the database and re-seeds it from `contracts/fixtures`, including the recorded event streams and the W8 review.
+- `make demo-export` dumps runs and reviews to JSON.
+- `make demo-bundles` builds the upload folder.
+- The replay streams are committed under `contracts/fixtures/`.
+
+**Runtime:** one uvicorn worker. The MCP session manager runs in the lifespan. SSE reads the database.
+
+## 7. Interfaces and contracts (frozen by T01)
 
 | Contract | Location | Consumers |
 |---|---|---|
-| Domain + API models (Pydantic) | `backend/app/contracts/*.py` | API, workflow, MCP |
-| OpenAPI document (exported) | `contracts/openapi.json` | frontend types (`openapi-typescript`), CLI |
-| Agent output models (`ProfileSuggestion`, `FindingCandidate`) | `backend/app/contracts/ai.py` | evaluator agent |
-| `AgentEvent` schema + SSE envelope | `backend/app/contracts/activity.py` | recorder, web, MCP |
-| `LegalKnowledgeProvider` protocol | `backend/app/legal/base.py` | providers, workflow, MCP |
-| MCP tool signatures | `backend/app/mcp/tools.py` (typed) | MCP server |
-| Requirement pack schema | `data/packs/schema.json` | pack, scoper |
-| Fixtures: Wealthpilot v0.9/v1.0 assessments **+ recorded event streams** | `contracts/fixtures/*.json` | web (slice 1), replay, tests |
-| Golden expectations | `demo/wealthpilot/expected.yaml` | eval, acceptance |
+| Domain + API models (Pydantic) | `backend/app/contracts/*.py` | API, workflow, MCP, CI |
+| OpenAPI (exported) + TS types | `contracts/openapi.json`, `frontend/src/api/types.ts` | web, `cco_check.py` |
+| `FindingCandidate` (agent output) | `backend/app/contracts/ai.py` | evaluator |
+| `AgentEvent` + SSE envelope | `backend/app/contracts/activity.py` | recorder, web, MCP |
+| Readiness (gate, labels, coverage, `changes_since_previous`) | `backend/app/contracts/readiness.py` | web, CI comment, MCP |
+| `LegalKnowledgeProvider` protocol + cache format | `backend/app/legal/base.py`, `data/corpus-cache/README.md` | providers, ingest |
+| Requirement pack schema (incl. `remediation.parts`) | `data/packs/schema.json` | pack, scoper, renderer |
+| Bundle format + per-product evidence config | `backend/app/contracts/bundle.py` | ingestion, CI, demo bundles |
+| CI exit codes + comment marker | `backend/app/contracts/ci.py` (documented constants) | server, `cco_check.py` |
+| MCP tool signatures | `backend/app/mcp/tools.py` | MCP server |
+| Fixtures: assessments + event streams (v0.9.0, partial rc, v1.0.0) | `contracts/fixtures/*.json` | web (slice 1), replay, demo-reset, tests |
+| Golden expectations (all requirements × 3 releases) | `demo/wealthpilot/expected.yaml` | eval, ACs, comment snapshot |
+| Design tokens | `docs/design.md` | web |
 
-Layout: `backend/`, `frontend/`, `contracts/`, `data/packs/`, `data/corpus-cache/`, `demo/wealthpilot/`, `docs/specs/`.
+Layout: `backend/`, `frontend/`, `contracts/`, `data/packs/`, `data/corpus-cache/`, `demo/wealthpilot/`, `scripts/`, `docs/`.
 
 ## 8. Decisions
 
-| # | Decision | Status |
-|---|---|---|
-| D1 | Python: FastAPI + PydanticAI + `mcp` SDK; no Mastra | agreed |
-| D2 | EU + France, fintech, ~25 curated requirements | agreed |
-| D3 | Finding = one per requirement × assessment | proposed |
-| D4 | Quote-based evidence location | proposed |
-| D5 | Deterministic gate; the human review decides, the AI result is kept for provenance | proposed |
-| D6 | Official sources are the citation authority | proposed |
-| D7 | MCP mounted on the same app; CI via REST | agreed |
-| D14 | CI release gate in V1: a GitHub Action uploads code + `compliance/` documents; per-product CI token; `dev → main` release PR flow | agreed |
-| D8 | Persona toggle, no auth | proposed |
-| D9 | Live run with an event-replay fallback | proposed |
-| D10 | React + Vite + TS + Tailwind + shadcn; assistant-ui only for the stretch chat | agreed |
-| D11 | Agent-activity layer as a first-class feature | agreed |
-| D12 | Demo company Wealthpilot; v1.0.0 on the `release/v1.0.0` branch | agreed |
-| D13 | Fix plan as a first-class output (UI, REST, MCP); v1.0.0 built from it | agreed |
+| # | Decision | Rationale | Status |
+|---|---|---|---|
+| D1 | Python: FastAPI + PydanticAI + `mcp` SDK; no Mastra | One runtime; typed outputs with retry; activity events | decided |
+| D2 | EU + France, fintech; **~10 requirements** (W1–W8 + C1–C2) | Controlled demo; grows after AC4 (B2) | decided |
+| D3 | One finding per scoped requirement × assessment | Coverage and changes come straight from the data | decided |
+| D4 | Quote-based evidence location with a tolerant locator | LLM offsets are unreliable | decided |
+| D5 | Deterministic gate; the human review takes precedence and **carries forward** by evidence fingerprint; AI values immutable | Trust; reachable READY (B1) | decided |
+| D6 | Official sources are the citation authority; CMF texts hand-curated with their Légifrance URLs | Provenance without a working API (M7) | decided |
+| D7 | One app serves REST, `/ci` and `/mcp` | One engine, several surfaces | decided |
+| D8 | Persona toggle + **one deploy token**, no accounts | Demo story + basic protection (B3) | decided |
+| D9 | Live run with event replay from the same table | Stage safety, same code path (M9) | decided |
+| D10 | React + Vite + TS + Tailwind + shadcn; **no chat** in V1 | Scope (M4) | decided |
+| D11 | Agent-activity layer is first-class but slim | Core demo (M9) | decided |
+| D12 | Wealthpilot; **v1.0.0 accumulates on `dev`**; v0.9.0 = ae1c4e5 + a docs-only commit; base-branch actions are human gates | Consistent anchors (M1) | decided |
+| D13 | Fix plan **rendered deterministically** from pack templates; one format for UI, CI and MCP | Testable, identical everywhere (M3) | decided |
+| D14 | CI release gate in V1; config server-side; exit 2 = unavailable | Hardened (M6) | decided |
+| D15 | One ingestion path: ZIP + `compliance/*.md`; hardened; redacted | Simplicity + safety (M5) | decided |
+| D16 | Models: codestral (evaluation), ministral-8b (light), mistral-embed; severity from rules | Our quota (§3) | decided |
+| D17 | MCP = 4 read tools; `run_assessment` is stretch | Scope (M4) | decided |
+| D18 | "AI pre-assessment, not legal advice" labels; fictional demo docs | Liability (M8) | decided |
 
 ## 9. Acceptance criteria
 
-- **AC1 Contracts:** models import, OpenAPI is exported, fixtures validate, and frontend types are generated without diff. · `make contracts-check`
-- **AC2 Golden path on fixtures:** Wealthpilot v0.9.0 shows **Not ready** with 2 blockers and 1 needs-evidence item, and you can click through to a finding. · Playwright `golden-path.spec.ts`
-- **AC3 Traceability:** every `potential_violation`/`satisfied` finding has an evidence ref that resolves and a citation with a `source_url`. · `pytest tests/test_traceability.py`
-- **AC4 Golden eval:** a live v0.9.0 run matches W1–W7 in ≥ 4 of 5 runs; v1.0.0 is Ready in ≥ 4 of 5. · `python -m cco.eval wealthpilot --runs 5`
-- **AC5 Validation and retry:** with a scripted model (PydanticAI `FunctionModel`) returning a bad quote and then valid output, the finding is persisted after one retry, with a `retry` event. Three bad outputs → `uncertain` with no dangling references. · `pytest tests/test_validation.py`
-- **AC6 Human review:** counsel `not_applicable` on W8 changes the effective conclusion and the gate, and the AI result is still kept. · `pytest tests/test_review.py`
-- **AC7 Release compare:** v0.9.0 → v1.0.0 lists W1–W7 as resolved. · API test + Playwright
-- **AC8 Legal providers:** CELLAR returns GDPR Art. 5 for CELEX `32016R0679`; Légifrance returns CMF L.541-1 once credentials work; the cache serves both offline. · `pytest -m integration`
-- **AC9 MCP:** an MCP client lists 6 tools; `list_findings(severity="blocker")` on v0.9.0 returns W1–W2; the call appears as an `AgentRun(kind=mcp)`. · `pytest tests/test_mcp.py`
-- **AC10 Agent activity:** an assessment produces ordered events covering every step. The SSE stream delivers them live and replays them for a finished run. Every finding's trace has at least one `model_request` and one `finding_emitted`. · `pytest tests/test_activity.py` + Playwright
-- **AC12 Fix plan:**
-  - For v0.9.0, the coding-agent plan contains one item per open code finding (W2, W4, W5, W6, W7), plus W1's dependent code item. Each has ≥ 1 `path:line` location that exists at the release's commit, a legal citation, and a `done_when`.
-  - W1's organisational part and W3 appear in the appendix only.
-  - MCP `get_remediation_plan` returns the same Markdown.
-  - · `pytest tests/test_remediation.py`
+- **AC1 Contracts:** models import; OpenAPI exports; all fixtures validate; generated TS types show no diff. · verify: `make contracts-check`
+- **AC2 Golden path on fixtures:** v0.9.0 overview shows **Not ready**, 2 blockers, 1 needs-evidence and the AI label; click-through to W1 shows the highlight, the code lines and the legal drawer. · verify: `pnpm -C frontend exec playwright test golden-path.spec.ts`
+- **AC3 Traceability:** every `potential_violation`/`satisfied` finding has an evidence ref that resolves to existing text or lines, and a citation with a `source_url`. · verify: `uv run pytest tests/test_traceability.py`
+- **AC4 Golden eval:** live runs match `expected.yaml` for **all** requirements in ≥ 4 of 5 runs, for v0.9.0, the partial rc and v1.0.0 (with the W8 review seeded). The injection fixture doesn't change any conclusion. A run budget of ≤ 15 min in total is logged. Counts only after the legal sign-off gate. · verify: `uv run python -m cco.eval wealthpilot --runs 5`
+- **AC5 Validation and retry:** a scripted `FunctionModel`:
+  - a bad quote, then valid output → persisted after one retry, with a `retry` event;
+  - 3 bad outputs → `uncertain` with no dangling references;
+  - tool-limit exhaustion → `uncertain`.
+  - · verify: `uv run pytest tests/test_validation.py`
+- **AC6 Review and carry-forward:**
+  - counsel `not_applicable` on W8 changes the effective conclusion and the gate, and the AI value is kept;
+  - a new assessment with the same fingerprint shows W8 "carried";
+  - a changed fingerprint doesn't carry it;
+  - revoking it restores REVIEW_REQUIRED.
+  - · verify: `uv run pytest tests/test_review.py`
+- **AC7 Changes since previous:** v1.0.0 readiness lists W1–W7 as resolved against the rc, and the rc lists W3–W7 as resolved against v0.9.0. The UI shows them. · verify: `uv run pytest tests/test_readiness.py` + Playwright
+- **AC8a Legal layer:** CELLAR returns GDPR Art. 5 for `32016R0679`; with the network off, the cache serves every `derived_from` provision of the pack, including the manual CMF texts with Légifrance URLs. · verify: `uv run pytest tests/test_legal.py` (the network part is marked `integration`)
+- **AC8b (stretch, can be waived at a gate):** live Légifrance returns CMF L.541-1. · verify: `uv run pytest -m legifrance`
+- **AC9 MCP:**
+  - a client lists exactly 4 tools;
+  - `list_findings(severity="blocker")` on v0.9.0 returns W1 and W2;
+  - `get_remediation_plan` equals `fix-plan.md` byte for byte;
+  - a wrong token is rejected;
+  - calls are recorded with `run_kind=mcp`.
+  - · verify: `uv run pytest tests/test_mcp.py`
+- **AC10 Activity:**
+  - an assessment produces ordered events covering every step;
+  - findings that had a model call have ≥ 1 `model_request` and 1 `finding`;
+  - scoped-out findings have a `scope` event and no model call;
+  - SSE delivers live and replays a finished run identically.
+  - · verify: `uv run pytest tests/test_activity.py` + Playwright
+- **AC11 Ingestion:** the bundle in `demo/wealthpilot/v0.9.0/upload/` uploads through the UI. Markdown documents and code files render with highlights after assessment. · verify: Playwright `upload.spec.ts`
+- **AC12 Fix plan:** the rendered v0.9.0 plan matches `remediation-plan.md` item for item:
+  - code items 1–6 with their ids, kinds and dependencies, and appendix A1–A4;
+  - every `path:line` exists at tag `v0.9.0`;
+  - the render is deterministic (two renders are byte-identical).
+  - · verify: `uv run pytest tests/test_fix_plan.py`
 - **AC13 CI gate:**
-  - On a release PR `dev → main` in FinTechProto, the `compliance` check fails for the partial-fix state and passes for the full-fix state.
-  - Each run posts one updated PR comment listing the open blockers with `path:line`.
-  - The run appears in the CCO as a `source: ci` release with the PR link.
-  - A `v1.0.0` tag produces release `v1.0.0` with gate READY.
-  - · GitHub run links recorded in `evidence/`, plus `pytest tests/test_ci_api.py` (CI endpoint with the token, ZIP + documents ingestion)
-- **AC11 Ingestion:** PDF, MD, URL and repo-path inputs produce viewable text with highlights. · Playwright
+  - **(a) scripted:** `cco_check.py` against a local CCO with fixture bundles exits 1 for v0.9.0, 1 for the partial state, 0 for v1.0.0 and 2 when the CCO is unreachable. The comment body equals the snapshot, and the upsert keeps one comment. · verify: `uv run pytest tests/test_ci_check.py`
+  - **(b) live:** on FinTechProto, the release PR is red after push 1 and green after push 2; the tag creates release `1.0.0` READY. Run links are recorded in `evidence/`. · verify: gate task with links
+- **AC14 Security:**
+  - missing or wrong deploy, CI and MCP tokens → 401;
+  - a zip-slip, zip-bomb or symlink bundle → 400;
+  - `.env` and `*.pem` in a bundle are dropped;
+  - a planted fake key is redacted in artifact text and in previews;
+  - a second concurrent run → 409.
+  - · verify: `uv run pytest tests/test_security.py`
 
-## 10. Risks and mitigations
+## 10. Risks and rollback
 
 | Risk | Mitigation |
 |---|---|
-| Légifrance auth not working | Fix the credentials (Q8); the corpus cache serves French provisions behind the same interface |
-| Model variance on stage | `temperature=0`, sharp gaps in the demo data, golden eval, event replay |
-| Small models (Codestral, Ministral 8B) miss subtle findings | Severity set by rules; one requirement per prompt; evidence preloaded; the golden eval gates the demo; switch to medium if quota arrives |
-| Agent tools make runs slow or unpredictable | Evidence bundle preloaded; max 6 tool calls; concurrency 4 |
-| Quote matching on OCR'd PDFs | Demo documents in MD; normalization; fuzzy threshold |
-| Mistral rate limits | Concurrency cap, stored runs, replay |
-| Too much time on SDD documents | One SPEC + task files; contracts are code (Pydantic), not prose |
+| Small models miss a golden finding | W1 spike at the midpoint (B4); severity from rules; one requirement per prompt; sharp gaps in the demo data; AC4; switch to medium if quota arrives |
+| Model variance on stage | `temperature=0`; replay from the same events table; `make demo-reset` |
+| Rate limits (CI, web and eval overlapping) | Global queue, backoff, ~10 requirements, rehearsal with concurrent runs |
+| W8 fingerprint changes between releases | AC4 checks it; counsel re-reviews on stage as the fallback |
+| GitHub can't reach the CCO | Q3 decided in W1; named tunnel fallback; exit 2 is neutral; recorded run links |
+| Légifrance unavailable | Hand-curated CMF cache (D6); AC8b is stretch |
+| Prompt injection via uploaded docs | Delimited evidence, system rule, injection fixture in AC4 |
+| Secrets in uploaded repos | Server-side excludes + redactor (AC14) |
+| Legal claims taken as advice | Labels everywhere; legal sign-off gate; fictional docs |
+| Too much time on SDD documents | One SPEC + task files; contracts are code |
+
+**Rollback:** the CCO is new code on `ft/cco-mvp`, so rollback means not merging it. In FinTechProto, the CI workflow is removed by reverting one commit on `dev`, and branch protection is a human setting, reverted at the same gate.
 
 ## 11. Open questions
 
-1. ~~Q1 Backend runtime~~ → Python + PydanticAI (agreed).
-2. ~~Q2 Demo company~~ → Wealthpilot (agreed). Who verifies the legal references in §6.9?
-3. **Q3 Deployment (now blocking for CI):** GitHub has to reach the CCO API. Deploy the app (Railway, Fly or Render, with Neon or Supabase Postgres + pgvector), or run it locally behind a `cloudflared` tunnel for the demo?
-4. **Q4 Stage mode:** live by default with a replay toggle?
-5. **Q5 Legora:** do their terms allow indexing the downloaded documents?
-6. **Q6 Owners:** who owns contracts, web, pipeline, legal pack and demo documents?
-7. **Q7 Product name.**
-8. **Q8 Légifrance:** the PISTE **Client ID**, the environment (sandbox or production), and confirmation that the Légifrance API is subscribed on that app.
+1. **Q2 Legal reviewer:** who signs off the pack and the W1–W8/C1–C2 citations (gate before AC4)?
+2. **Q3 Deployment:** host (Railway, Fly or Render, with Neon or Supabase + pgvector) or a named tunnel? **Decided in W1** (B4).
+3. **Q5 Legora:** do their terms allow using the downloaded documents? Not needed for V1.
+4. **Q6 Owners:** contracts, web, pipeline, legal pack, demo documents, FinTechProto prep.
+5. **Q7 Product name.** Placeholder: "CCO".
+6. **Q8 Légifrance:** the PISTE Client ID and environment. Only AC8b depends on it.
+
+Resolved by critique 01: Q1 (runtime), Q4 (stage mode → D9).
 
 ## 12. Plan
 
 <!-- Filled by /roman-plan. The sketch below is input to planning, not the plan. -->
 
-| Wave | Tasks (parallel within a wave) | Gate after |
+| Wave | Work | Gate after |
 |---|---|---|
-| W0 | **T01 contracts:** Pydantic models, OpenAPI export, TS types, fixtures + recorded event streams, pack schema, `expected.yaml` | Opus review |
-| W1 | Web shell + Overview + Findings on fixtures · FastAPI skeleton + DB + seed · Wealthpilot demo documents + v1.0 branch · pack + CELLAR/Légifrance providers + cache | **Midpoint:** golden path clickable on fixtures (AC2) |
-| W2 | Finding workspace + viewers + legal drawer · evaluator agent + validation/retry · activity recorder + SSE + live run panel · ingestion | AC3, AC5, AC10 |
-| W3 | Reviews + persona toggle · fix plan (API, UI, MCP) · release compare · MCP · live wiring | AC4, AC6, AC7, AC9, AC12 |
-| W4 | CI endpoint + token · FinTechProto `compliance/` folder + workflow + `cco_check.py` · `dev` branch in two batches · deploy or tunnel · polish, replay, rehearsal | AC13 · final verify |
+| W0 | **T01 contracts:** Pydantic models, OpenAPI + TS types, pack schema with remediation templates, `expected.yaml`, fixtures + event streams, design tokens | Opus review of the contracts |
+| W1 | Web shell + Overview + Findings on fixtures · FastAPI skeleton + DB + seed + tokens · **model spike: CLI evaluator on W1–W3 against v0.9.0** · pack + CELLAR ingest + curated CMF cache · Wealthpilot compliance docs + FinTechProto prep (human: docs-only commit, `v0.9.0` tag) · `cco_check.py` stub against the fixture API · **decide Q3** | **Midpoint:** AC2 + ≥ 2/3 golden findings live from the spike |
+| W2 | Finding workspace + viewers + legal drawer + inline review · evaluator + validation/retry in the pipeline · activity events + SSE + live panel · bundle ingestion + hardening + demo bundles | AC3, AC5, AC10, AC11, AC14 |
+| W3 | Carry-forward + readiness changes · fix-plan renderer · MCP (4 tools) · `/ci` endpoint + comment rendering · live wiring | AC6, AC7, AC9, AC12, AC13a; legal sign-off gate; then AC4 |
+| W4 | FinTechProto `dev` pushes (fix-plan items) + workflow; human gates: branch protection, release-PR merge, `v1.0.0` tag · deploy or tunnel · polish, replay, demo-reset, rehearsal | AC13b, final verify |
 
-Cut order if time runs short: Ask CCO chat → `assess_change` → ZIP upload → live Légifrance (keep the cache) → compare view (keep the switcher). **The activity panel isn't cut.** It is part of the core demo. If live CI is at risk on the day, show the recorded red and green GitHub runs, and run `cco_check.py` locally against the CCO.
+**Cut order if time runs short:**
+1. pgvector "related provisions"
+2. AC8b live Légifrance
+3. The UI "New release" upload (the seed and CI still work)
+4. The persona toggle (inline review stays)
+
+**The activity panel, the fix plan and the CI gate aren't cut.** If live CI fails on the day, show the recorded runs and run AC13a locally.
