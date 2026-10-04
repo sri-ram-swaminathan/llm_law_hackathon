@@ -9,6 +9,8 @@ services:
       POSTGRES_USER: cco
       POSTGRES_PASSWORD: cco
       POSTGRES_DB: cco
+    labels: &labels
+      sdd.slug: cco-mvp
     ports:
       - "127.0.0.1:20002:5432"
     volumes:
@@ -19,5 +21,44 @@ services:
       timeout: 3s
       retries: 20
 
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      labels: *labels
+    image: sdd-cco-mvp-api
+    labels: *labels
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CCO_DATABASE_URL: postgresql+psycopg://cco:cco@db:5432/cco
+      CCO_DEPLOY_TOKEN: ${CCO_DEPLOY_TOKEN:-dev-token}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:20000:20000"
+    volumes:
+      - cco-runtime:/app/data/runtime
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      labels: *labels
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://127.0.0.1:20000}
+    image: sdd-cco-mvp-web
+    labels: *labels
+    depends_on:
+      - api
+    ports:
+      - "127.0.0.1:20001:20001"
+
 volumes:
   cco-pgdata:
+    labels: *labels
+  cco-runtime:
+    labels: *labels
