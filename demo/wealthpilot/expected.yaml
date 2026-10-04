@@ -1,0 +1,204 @@
+# Golden expectations (SPEC 6.9): every requirement x 3 releases.
+# 'rc' is the partial-fix release candidate; W8 is decided by counsel on v0.9.0 and carried.
+# conclusion = AI value; effective_conclusion = after the applicable (possibly carried) review.
+product: wealthpilot
+pack: fintech-eu-fr
+releases:
+  0.9.0:
+    version: 0.9.0
+    fixture: contracts/fixtures/release-0.9.0.json
+    gate: NOT_READY
+    gate_label: Not ready
+    counts:
+      blockers: 2
+      missing_evidence: 1
+      high: 3
+      medium: 1
+      low: 0
+      uncertain_unreviewed: 1
+      requirements_total: 10
+      requirements_evaluated: 9
+    counsel_reviewed: 0/10
+    changes_since_previous:
+      resolved: []
+      new: []
+      unchanged: []
+  rc:
+    version: 1.0.0-rc.12
+    fixture: contracts/fixtures/release-1.0.0-rc.json
+    gate: NOT_READY
+    gate_label: Not ready
+    counts:
+      blockers: 2
+      missing_evidence: 0
+      high: 0
+      medium: 0
+      low: 0
+      uncertain_unreviewed: 0
+      requirements_total: 10
+      requirements_evaluated: 9
+    counsel_reviewed: 1/10
+    changes_since_previous:
+      resolved:
+      - GDPR-INFO-01
+      - FR-SUITABILITY-UPDATE-01
+      - GDPR-ERASURE-01
+      - GDPR-SECURITY-01
+      - FR-SUITABILITY-REPORT-01
+      new: []
+      unchanged:
+      - FR-CIF-STATUS-01
+      - FR-SUITABILITY-01
+      - AI-TRANSPARENCY-01
+      - FR-NO-EXECUTION-01
+      - GDPR-PASSWORD-HASH-01
+  1.0.0:
+    version: 1.0.0
+    fixture: contracts/fixtures/release-1.0.0.json
+    gate: READY
+    gate_label: Ready
+    counts:
+      blockers: 0
+      missing_evidence: 0
+      high: 0
+      medium: 0
+      low: 0
+      uncertain_unreviewed: 0
+      requirements_total: 10
+      requirements_evaluated: 9
+    counsel_reviewed: 1/10
+    changes_since_previous:
+      resolved:
+      - FR-CIF-STATUS-01
+      - FR-SUITABILITY-01
+      - GDPR-INFO-01
+      - FR-SUITABILITY-UPDATE-01
+      - GDPR-ERASURE-01
+      - GDPR-SECURITY-01
+      - FR-SUITABILITY-REPORT-01
+      new: []
+      unchanged:
+      - AI-TRANSPARENCY-01
+      - FR-NO-EXECUTION-01
+      - GDPR-PASSWORD-HASH-01
+requirements:
+- alias: W1
+  id: FR-CIF-STATUS-01
+  severity: blocker
+  mandatory: false
+  conclusion:
+    0.9.0: potential_violation
+    rc: potential_violation
+    1.0.0: satisfied
+  effective_conclusion:
+    0.9.0: potential_violation
+    rc: potential_violation
+    1.0.0: satisfied
+- alias: W2
+  id: FR-SUITABILITY-01
+  severity: blocker
+  mandatory: false
+  conclusion:
+    0.9.0: potential_violation
+    rc: potential_violation
+    1.0.0: satisfied
+  effective_conclusion:
+    0.9.0: potential_violation
+    rc: potential_violation
+    1.0.0: satisfied
+- alias: W3
+  id: GDPR-INFO-01
+  severity: high
+  mandatory: true
+  conclusion:
+    0.9.0: insufficient_evidence
+    rc: satisfied
+    1.0.0: satisfied
+  effective_conclusion:
+    0.9.0: insufficient_evidence
+    rc: satisfied
+    1.0.0: satisfied
+- alias: W4
+  id: FR-SUITABILITY-UPDATE-01
+  severity: high
+  mandatory: false
+  conclusion:
+    0.9.0: potential_violation
+    rc: satisfied
+    1.0.0: satisfied
+  effective_conclusion:
+    0.9.0: potential_violation
+    rc: satisfied
+    1.0.0: satisfied
+- alias: W5
+  id: GDPR-ERASURE-01
+  severity: high
+  mandatory: false
+  conclusion:
+    0.9.0: potential_violation
+    rc: satisfied
+    1.0.0: satisfied
+  effective_conclusion:
+    0.9.0: potential_violation
+    rc: satisfied
+    1.0.0: satisfied
+- alias: W6
+  id: GDPR-SECURITY-01
+  severity: high
+  mandatory: false
+  conclusion:
+    0.9.0: potential_violation
+    rc: satisfied
+    1.0.0: satisfied
+  effective_conclusion:
+    0.9.0: potential_violation
+    rc: satisfied
+    1.0.0: satisfied
+- alias: W7
+  id: FR-SUITABILITY-REPORT-01
+  severity: medium
+  mandatory: false
+  conclusion:
+    0.9.0: potential_violation
+    rc: satisfied
+    1.0.0: satisfied
+  effective_conclusion:
+    0.9.0: potential_violation
+    rc: satisfied
+    1.0.0: satisfied
+- alias: W8
+  id: AI-TRANSPARENCY-01
+  severity: medium
+  mandatory: false
+  conclusion:
+    0.9.0: uncertain
+    rc: uncertain
+    1.0.0: uncertain
+  effective_conclusion:
+    0.9.0: uncertain
+    rc: not_applicable
+    1.0.0: not_applicable
+- alias: C1
+  id: FR-NO-EXECUTION-01
+  severity: high
+  mandatory: false
+  conclusion:
+    0.9.0: not_applicable
+    rc: not_applicable
+    1.0.0: not_applicable
+  effective_conclusion:
+    0.9.0: not_applicable
+    rc: not_applicable
+    1.0.0: not_applicable
+- alias: C2
+  id: GDPR-PASSWORD-HASH-01
+  severity: medium
+  mandatory: false
+  conclusion:
+    0.9.0: satisfied
+    rc: satisfied
+    1.0.0: satisfied
+  effective_conclusion:
+    0.9.0: satisfied
+    rc: satisfied
+    1.0.0: satisfied

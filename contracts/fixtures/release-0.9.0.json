@@ -1,0 +1,621 @@
+{
+  "release": {
+    "id": "rel-0.9.0",
+    "product_id": "wealthpilot",
+    "version": "0.9.0",
+    "source": "seed",
+    "git_sha": "81bbbbe5c0f1a2b3c4d5e6f708192a3b4c5d6e7f",
+    "branch": "main",
+    "pr_number": null,
+    "ci_run_url": null,
+    "previous_release_id": null,
+    "created_at": "2026-10-04T09:00:00Z"
+  },
+  "artifacts": [
+    {
+      "id": "art-0.9.0-code",
+      "release_id": "rel-0.9.0",
+      "kind": "code_repo",
+      "path": "code",
+      "text": "",
+      "files": [
+        {
+          "path": "backend/app/config.py",
+          "content": "import os\n\nDATABASE_URL = os.getenv(\"DATABASE_URL\", \"sqlite:///./wealthpilot.db\")\nJWT_SECRET = os.getenv(\"JWT_SECRET\", \"dev-secret-change-me\")\nJWT_EXPIRE_HOURS = 24 * 7\nMISTRAL_API_KEY = os.getenv(\"MISTRAL_API_KEY\", \"\")\nMISTRAL_MODEL = os.getenv(\"MISTRAL_MODEL\") or \"mistral-large-latest\"\nBASE_CURRENCY = \"EUR\"\n\nDISCLAIMER = (\n    \"Wealthpilot provides information and educational content only. \"\n    \"This is not financial advice. Always consult a certified investment \"\n    \"advisor before making investment decisions.\"\n)\n"
+        },
+        {
+          "path": "backend/app/advisor.py",
+          "content": "\"\"\"Builds the Mistral prompt and turns the response into a validated Analysis.\"\"\"\n\nimport json\nimport logging\n\nimport httpx\nfrom fastapi import HTTPException\nfrom pydantic import ValidationError\n\nfrom .config import MISTRAL_API_KEY, MISTRAL_MODEL\nfrom .models import User\nfrom .portfolio import FUND_TYPES\nfrom .schemas import Analysis, PortfolioOut\n\nlog = logging.getLogger(__name__)\n\nSYSTEM_PROMPT = \"\"\"You are Wealthpilot, an investment research assistant for French retail investors.\nYou produce educational, personalised portfolio analysis. You never execute trades and you do not\npresent your output as regulated financial advice.\n\nContext to keep in mind:\n- The investor is French. Where relevant, mention French wrappers (PEA, assurance-vie, compte-titres)\n  and PEA eligibility (EU-listed equities and PEA-eligible ETFs).\n- Prefer broad, low-cost, diversified instruments (UCITS ETFs) when suggesting new positions.\n- Match suggestions to the investor's risk tolerance (1 = very conservative, 5 = aggressive) and horizon.\n- Be specific: name tickers (Yahoo Finance format, e.g. CW8.PA, MC.PA) and give concrete percentages.\n\nReply with a single JSON object, no markdown, exactly matching this schema:\n{\n  \"summary\": \"2-3 sentence overall assessment of the portfolio vs the investor's profile\",\n  \"recommendations\": [   // exactly 3 items\n    {\"action\": \"buy\" | \"sell\" | \"hold\" | \"rebalance\",\n     \"ticker\": \"Yahoo ticker\",\n     \"title\": \"short imperative headline, max 8 words\",\n     \"rationale\": \"2-4 sentences explaining why, referencing the investor's data\"}\n  ],\n  \"rebalancing\": {\n    \"summary\": \"1-3 sentences describing the suggested rebalancing\",\n    \"target_allocation\": [ {\"label\": \"asset or asset class\", \"percent\": number} ]  // sums to 100\n  },\n  \"risk_flag\": {\"severity\": \"low\" | \"medium\" | \"high\", \"title\": \"short headline\", \"detail\": \"1-3 sentences\"}\n}\"\"\"\n\nGOAL_LABELS = {\n    \"retirement\": \"retirement\", \"home\": \"buying a home\", \"education\": \"education\",\n    \"wealth_growth\": \"long-term wealth growth\", \"emergency_fund\": \"emergency fund\", \"other\": \"other\",\n}\n\n\ndef build_user_message(user: User, portfolio: PortfolioOut) -> str:\n    p = user.profile\n    data = {\n        \"investor_profile\": {\n            \"age\": p.age,\n            \"annual_income_eur\": p.annual_income,\n            \"savings_goal\": GOAL_LABELS.get(p.savings_goal, p.savings_goal),\n            \"monthly_investment_eur\": p.monthly_investment,\n            \"risk_tolerance_1_to_5\": p.risk_tolerance,\n            \"investment_horizon_years\": p.horizon_years,\n        },\n        \"portfolio\": {\n            \"currency\": portfolio.currency,\n            \"total_value\": portfolio.total_value,\n            \"total_unrealised_pnl_pct\": portfolio.total_pnl_pct,\n            \"measured_risk_score_1_to_5\": portfolio.risk_score,\n            \"annualised_volatility_pct\": portfolio.volatility,\n            \"holdings\": [\n                {\n                    \"ticker\": h.ticker, \"name\": h.name, \"type\": h.instrument_type, \"quantity\": h.quantity,\n                    \"avg_buy_price\": h.avg_buy_price, \"current_price\": h.current_price,\n                    \"price_currency\": h.currency, \"value_eur\": h.value,\n                    \"weight_pct\": h.weight, \"unrealised_pnl_pct\": h.pnl_pct,\n                }\n                for h in portfolio.holdings\n            ],\n        },\n    }\n    return \"Analyse this investor and portfolio:\\n\" + json.dumps(data, indent=2)\n\n\ndef mistral_analysis(user: User, portfolio: PortfolioOut) -> Analysis:\n    body = {\n        \"model\": MISTRAL_MODEL,\n        \"temperature\": 0.3,\n        \"response_format\": {\"type\": \"json_object\"},\n        \"messages\": [\n            {\"role\": \"system\", \"content\": SYSTEM_PROMPT},\n            {\"role\": \"user\", \"content\": build_user_message(user, portfolio)},\n        ],\n    }\n    try:\n        r = httpx.post(\n            \"https://api.mistral.ai/v1/chat/completions\",\n            headers={\"Authorization\": f\"Bearer {MISTRAL_API_KEY}\"},\n            json=body, timeout=60,\n        )\n        r.raise_for_status()\n        content = r.json()[\"choices\"][0][\"message\"][\"content\"]\n        analysis = Analysis.model_validate_json(content)\n    except httpx.HTTPError as e:\n        log.error(\"Mistral request failed: %s\", e)\n        raise HTTPException(502, \"The AI advisor is unavailable right now. Please try again.\")\n    except (ValidationError, KeyError, ValueError) as e:\n        log.error(\"Mistral returned an unexpected payload: %s\", e)\n        raise HTTPException(502, \"The AI advisor returned an unexpected answer. Please try again.\")\n    analysis.recommendations = analysis.recommendations[:3]\n    return analysis\n\n\ndef demo_analysis(user: User, portfolio: PortfolioOut) -> Analysis:\n    \"\"\"Rule-based stand-in used when MISTRAL_API_KEY is not set, so the app is usable offline.\"\"\"\n    p = user.profile\n    holdings = sorted(portfolio.holdings, key=lambda h: h.weight, reverse=True)\n    recs = []\n    stocks = [h for h in holdings if h.instrument_type not in FUND_TYPES]\n    if stocks:\n        top = stocks[0]\n        if top.weight > 25:\n            recs.append({\"action\": \"rebalance\", \"ticker\": top.ticker,\n                         \"title\": f\"Trim {top.ticker} below 20% of portfolio\",\n                         \"rationale\": f\"{top.ticker} is {top.weight:.0f}% of your portfolio. A single position this large \"\n                                      \"means one company's news can move your whole savings. Consider redirecting part \"\n                                      \"of it to diversified funds.\"})\n    if holdings:\n        worst = min(holdings, key=lambda h: h.pnl_pct)\n        if worst.pnl_pct < -10 and all(r[\"ticker\"] != worst.ticker for r in recs):\n            recs.append({\"action\": \"hold\", \"ticker\": worst.ticker,\n                         \"title\": f\"Review the thesis on {worst.ticker}\",\n                         \"rationale\": f\"{worst.ticker} is down {abs(worst.pnl_pct):.0f}% from your average buy price. \"\n                                      \"Check whether the reasons you bought it still hold before averaging down or selling.\"})\n    gap = portfolio.risk_score - p.risk_tolerance\n    recs.append({\"action\": \"buy\", \"ticker\": \"CW8.PA\",\n                 \"title\": \"Invest monthly in a PEA-eligible MSCI World ETF\",\n                 \"rationale\": f\"With a {p.horizon_years}-year horizon, a monthly €{p.monthly_investment:.0f} into a broad, \"\n                              \"PEA-eligible world equity ETF spreads risk across ~1,300 companies at low cost and \"\n                              \"benefits from PEA tax treatment after 5 years.\"})\n    bond_reason = (f\"Your portfolio's measured risk ({portfolio.risk_score}/5) is above your stated tolerance \"\n                   f\"({p.risk_tolerance}/5).\" if gap > 0.5 else\n                   \"A bond allocation adds a source of return that does not move with equity markets.\")\n    recs.append({\"action\": \"buy\", \"ticker\": \"IEAG.AS\",\n                 \"title\": \"Add a euro aggregate bond ETF\",\n                 \"rationale\": bond_reason + f\" Directing part of your €{p.monthly_investment:.0f} monthly contribution \"\n                              \"to euro bonds would cushion drawdowns. Note: bond ETFs are not PEA-eligible; \"\n                              \"hold them in a compte-titres or assurance-vie.\"})\n    if holdings:\n        best = max(holdings, key=lambda h: h.pnl_pct)\n        recs.append({\"action\": \"hold\", \"ticker\": best.ticker,\n                     \"title\": f\"Keep {best.ticker} but stop adding\",\n                     \"rationale\": f\"{best.ticker} is up {best.pnl_pct:.0f}% on your buy price and is {best.weight:.0f}% of \"\n                                  \"the portfolio. Holding avoids crystallising capital gains tax (30% flat tax outside \"\n                                  \"a PEA); new money is better spent on under-weighted assets.\"})\n\n    equity = round(max(20, min(90, 20 + p.risk_tolerance * 12 + min(p.horizon_years, 20) / 2)))\n    return Analysis.model_validate({\n        \"summary\": f\"Your portfolio is worth €{portfolio.total_value:,.0f} with a measured risk of \"\n                   f\"{portfolio.risk_score}/5 ({portfolio.risk_label.lower()}), against a stated tolerance of \"\n                   f\"{p.risk_tolerance}/5. This is a demo analysis — set MISTRAL_API_KEY for AI-generated advice.\",\n        \"recommendations\": recs[:3],\n        \"rebalancing\": {\n            \"summary\": f\"For a risk tolerance of {p.risk_tolerance}/5 over {p.horizon_years} years, a reference \"\n                       f\"allocation is roughly {equity}% equities and {100 - equity}% bonds and cash.\",\n            \"target_allocation\": [\n                {\"label\": \"Global equities (ETF)\", \"percent\": round(equity * 0.7)},\n                {\"label\": \"European equities\", \"percent\": equity - round(equity * 0.7)},\n                {\"label\": \"Euro bonds\", \"percent\": round((100 - equity) * 0.7)},\n                {\"label\": \"Cash / money market\", \"percent\": 100 - equity - round((100 - equity) * 0.7)},\n            ],\n        },\n        \"risk_flag\": _demo_risk_flag(portfolio, p.risk_tolerance, stocks),\n    })\n\n\ndef _demo_risk_flag(portfolio: PortfolioOut, tolerance: int, stocks) -> dict:\n    gap = portfolio.risk_score - tolerance\n    base = f\"Measured portfolio risk is {portfolio.risk_score}/5 versus your stated tolerance of {tolerance}/5.\"\n    if gap > 0.5:\n        return {\"severity\": \"high\" if gap > 1 else \"medium\", \"title\": \"Risk above your tolerance\",\n                \"detail\": base + \" A sharp market fall could hit harder than you are comfortable with.\"}\n    if stocks and stocks[0].weight > 25:\n        return {\"severity\": \"medium\", \"title\": f\"Concentrated in {stocks[0].ticker}\",\n                \"detail\": f\"{stocks[0].ticker} alone is {stocks[0].weight:.0f}% of your portfolio. \" + base}\n    if gap < -1:\n        return {\"severity\": \"low\", \"title\": \"More cautious than your profile\",\n                \"detail\": base + f\" Over a long horizon this may limit growth towards your goal.\"}\n    return {\"severity\": \"low\", \"title\": \"Risk in line with your profile\", \"detail\": base}\n\n\ndef analyse(user: User, portfolio: PortfolioOut) -> tuple[Analysis, str]:\n    if MISTRAL_API_KEY:\n        return mistral_analysis(user, portfolio), \"mistral\"\n    return demo_analysis(user, portfolio), \"demo\"\n"
+        },
+        {
+          "path": "backend/app/models.py",
+          "content": "from datetime import datetime, timezone\n\nfrom sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String\nfrom sqlalchemy.orm import Mapped, mapped_column, relationship\n\nfrom .db import Base\n\n\ndef _now():\n    return datetime.now(timezone.utc)\n\n\nclass User(Base):\n    __tablename__ = \"users\"\n\n    id: Mapped[int] = mapped_column(primary_key=True)\n    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)\n    password_hash: Mapped[str] = mapped_column(String(255))\n    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)\n\n    profile: Mapped[\"RiskProfile | None\"] = relationship(\n        back_populates=\"user\", uselist=False, cascade=\"all, delete-orphan\"\n    )\n    holdings: Mapped[list[\"Holding\"]] = relationship(\n        back_populates=\"user\", cascade=\"all, delete-orphan\", order_by=\"Holding.id\"\n    )\n\n\nclass RiskProfile(Base):\n    __tablename__ = \"risk_profiles\"\n\n    id: Mapped[int] = mapped_column(primary_key=True)\n    user_id: Mapped[int] = mapped_column(ForeignKey(\"users.id\"), unique=True)\n    age: Mapped[int] = mapped_column(Integer)\n    annual_income: Mapped[float] = mapped_column(Float)\n    savings_goal: Mapped[str] = mapped_column(String(64))\n    monthly_investment: Mapped[float] = mapped_column(Float)\n    risk_tolerance: Mapped[int] = mapped_column(Integer)  # 1-5\n    horizon_years: Mapped[int] = mapped_column(Integer)\n    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)\n\n    user: Mapped[User] = relationship(back_populates=\"profile\")\n\n\nclass Holding(Base):\n    __tablename__ = \"holdings\"\n\n    id: Mapped[int] = mapped_column(primary_key=True)\n    user_id: Mapped[int] = mapped_column(ForeignKey(\"users.id\"), index=True)\n    ticker: Mapped[str] = mapped_column(String(32))\n    quantity: Mapped[float] = mapped_column(Float)\n    avg_buy_price: Mapped[float] = mapped_column(Float)\n\n    user: Mapped[User] = relationship(back_populates=\"holdings\")\n\n\nclass Recommendation(Base):\n    __tablename__ = \"recommendations\"\n\n    id: Mapped[int] = mapped_column(primary_key=True)\n    user_id: Mapped[int] = mapped_column(ForeignKey(\"users.id\"), index=True)\n    payload: Mapped[dict] = mapped_column(JSON)\n    source: Mapped[str] = mapped_column(String(16))  # \"mistral\" | \"demo\"\n    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)\n"
+        },
+        {
+          "path": "backend/app/schemas.py",
+          "content": "from datetime import datetime\nfrom typing import Literal\n\nfrom pydantic import BaseModel, EmailStr, Field\n\nSavingsGoal = Literal[\"retirement\", \"home\", \"education\", \"wealth_growth\", \"emergency_fund\", \"other\"]\n\n\nclass Credentials(BaseModel):\n    email: EmailStr\n    password: str = Field(min_length=8, max_length=128)\n\n\nclass Token(BaseModel):\n    access_token: str\n    token_type: str = \"bearer\"\n\n\nclass ProfileIn(BaseModel):\n    age: int = Field(ge=18, le=100)\n    annual_income: float = Field(ge=0)\n    savings_goal: SavingsGoal\n    monthly_investment: float = Field(ge=0)\n    risk_tolerance: int = Field(ge=1, le=5)\n    horizon_years: int = Field(ge=1, le=50)\n\n\nclass ProfileOut(ProfileIn):\n    model_config = {\"from_attributes\": True}\n\n\nclass Me(BaseModel):\n    id: int\n    email: str\n    profile: ProfileOut | None\n\n\nclass HoldingIn(BaseModel):\n    ticker: str = Field(min_length=1, max_length=32)\n    quantity: float = Field(gt=0)\n    avg_buy_price: float = Field(gt=0)\n\n\nclass HoldingOut(BaseModel):\n    id: int\n    ticker: str\n    name: str | None\n    instrument_type: str | None\n    quantity: float\n    avg_buy_price: float\n    current_price: float | None\n    currency: str\n    value: float\n    cost_basis: float\n    pnl: float\n    pnl_pct: float\n    weight: float\n    price_available: bool\n\n\nclass PortfolioOut(BaseModel):\n    holdings: list[HoldingOut]\n    total_value: float\n    total_cost: float\n    total_pnl: float\n    total_pnl_pct: float\n    currency: str\n    risk_score: float\n    risk_label: str\n    volatility: float | None\n    target_risk: int | None\n\n\nclass Recommendation(BaseModel):\n    action: Literal[\"buy\", \"sell\", \"hold\", \"rebalance\"]\n    ticker: str\n    title: str\n    rationale: str\n\n\nclass Rebalancing(BaseModel):\n    summary: str\n    target_allocation: list[dict]\n\n\nclass RiskFlag(BaseModel):\n    severity: Literal[\"low\", \"medium\", \"high\"]\n    title: str\n    detail: str\n\n\nclass Analysis(BaseModel):\n    summary: str\n    recommendations: list[Recommendation]\n    rebalancing: Rebalancing\n    risk_flag: RiskFlag\n\n\nclass AnalysisOut(BaseModel):\n    id: int\n    created_at: datetime\n    source: str\n    analysis: Analysis\n    disclaimer: str\n\n\nclass MarketIndex(BaseModel):\n    symbol: str\n    name: str\n    price: float | None\n    change_pct: float | None\n"
+        },
+        {
+          "path": "backend/app/auth.py",
+          "content": "from datetime import datetime, timedelta, timezone\n\nimport bcrypt\nimport jwt\nfrom fastapi import Depends, HTTPException, status\nfrom fastapi.security import HTTPAuthorizationCredentials, HTTPBearer\nfrom sqlalchemy.orm import Session\n\nfrom .config import JWT_EXPIRE_HOURS, JWT_SECRET\nfrom .db import get_db\nfrom .models import User\n\n_bearer = HTTPBearer(auto_error=False)\n\n\ndef hash_password(password: str) -> str:\n    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()\n\n\ndef verify_password(password: str, hashed: str) -> bool:\n    return bcrypt.checkpw(password.encode(), hashed.encode())\n\n\ndef create_token(user_id: int) -> str:\n    exp = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS)\n    return jwt.encode({\"sub\": str(user_id), \"exp\": exp}, JWT_SECRET, algorithm=\"HS256\")\n\n\ndef current_user(\n    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),\n    db: Session = Depends(get_db),\n) -> User:\n    unauthorized = HTTPException(status.HTTP_401_UNAUTHORIZED, \"Not authenticated\")\n    if creds is None:\n        raise unauthorized\n    try:\n        payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=[\"HS256\"])\n        user = db.get(User, int(payload[\"sub\"]))\n    except (jwt.PyJWTError, KeyError, ValueError):\n        raise unauthorized\n    if user is None:\n        raise unauthorized\n    return user\n"
+        },
+        {
+          "path": "backend/app/main.py",
+          "content": "import logging\n\nfrom fastapi import FastAPI\nfrom fastapi.middleware.cors import CORSMiddleware\n\nfrom .db import Base, engine\nfrom .routers import advice, auth, portfolio, profile\n\nlogging.basicConfig(level=logging.INFO)\n\nBase.metadata.create_all(engine)\n\napp = FastAPI(title=\"Wealthpilot API\", version=\"0.1.0\")\n# The frontend is served behind the same origin in Docker; this allows `npm run dev` on :5173\napp.add_middleware(\n    CORSMiddleware, allow_origins=[\"http://localhost:5173\"], allow_methods=[\"*\"], allow_headers=[\"*\"],\n)\n\nfor r in (auth.router, profile.router, portfolio.router, advice.router):\n    app.include_router(r)\n\n\n@app.get(\"/api/health\")\ndef health():\n    return {\"status\": \"ok\"}\n"
+        },
+        {
+          "path": "backend/app/routers/profile.py",
+          "content": "from fastapi import APIRouter, Depends\nfrom sqlalchemy.orm import Session\n\nfrom ..auth import current_user\nfrom ..db import get_db\nfrom ..models import RiskProfile, User\nfrom ..schemas import ProfileIn, ProfileOut\n\nrouter = APIRouter(prefix=\"/api/profile\", tags=[\"profile\"])\n\n\n@router.put(\"\", response_model=ProfileOut)\ndef upsert_profile(body: ProfileIn, user: User = Depends(current_user), db: Session = Depends(get_db)):\n    if user.profile is None:\n        user.profile = RiskProfile(**body.model_dump())\n    else:\n        for k, v in body.model_dump().items():\n            setattr(user.profile, k, v)\n    db.commit()\n    return user.profile\n"
+        },
+        {
+          "path": "backend/app/routers/advice.py",
+          "content": "from fastapi import APIRouter, Depends, HTTPException\nfrom sqlalchemy import select\nfrom sqlalchemy.orm import Session\n\nfrom ..advisor import analyse\nfrom ..auth import current_user\nfrom ..config import DISCLAIMER\nfrom ..db import get_db\nfrom ..models import Recommendation, User\nfrom ..portfolio import build_portfolio\nfrom ..prices import get_quotes\nfrom ..schemas import Analysis, AnalysisOut, MarketIndex\n\nrouter = APIRouter(prefix=\"/api\", tags=[\"advice\"])\n\nMARKET_INDICES = {\n    \"^FCHI\": \"CAC 40\",\n    \"^STOXX50E\": \"Euro Stoxx 50\",\n    \"^GSPC\": \"S&P 500\",\n    \"EURUSD=X\": \"EUR / USD\",\n}\n\n\ndef _out(rec: Recommendation) -> AnalysisOut:\n    return AnalysisOut(\n        id=rec.id, created_at=rec.created_at, source=rec.source,\n        analysis=Analysis.model_validate(rec.payload), disclaimer=DISCLAIMER,\n    )\n\n\n@router.get(\"/recommendations/latest\", response_model=AnalysisOut | None)\ndef latest(user: User = Depends(current_user), db: Session = Depends(get_db)):\n    rec = db.scalar(\n        select(Recommendation).where(Recommendation.user_id == user.id)\n        .order_by(Recommendation.created_at.desc(), Recommendation.id.desc()).limit(1)\n    )\n    return _out(rec) if rec else None\n\n\n@router.post(\"/recommendations\", response_model=AnalysisOut, status_code=201)\ndef generate(user: User = Depends(current_user), db: Session = Depends(get_db)):\n    if user.profile is None:\n        raise HTTPException(400, \"Complete your risk profile first\")\n    if not user.holdings:\n        raise HTTPException(400, \"Add at least one holding first\")\n    analysis, source = analyse(user, build_portfolio(user))\n    rec = Recommendation(user_id=user.id, payload=analysis.model_dump(), source=source)\n    db.add(rec)\n    db.commit()\n    return _out(rec)\n\n\n@router.get(\"/market\", response_model=list[MarketIndex])\ndef market(user: User = Depends(current_user)):\n    quotes = get_quotes(list(MARKET_INDICES))\n    out = []\n    for symbol, name in MARKET_INDICES.items():\n        q = quotes.get(symbol)\n        change = (q.price / q.prev_close - 1) * 100 if q and q.prev_close else None\n        out.append(MarketIndex(\n            symbol=symbol, name=name,\n            price=round(q.price, 4 if symbol.endswith(\"=X\") else 2) if q else None,\n            change_pct=round(change, 2) if change is not None else None,\n        ))\n    return out\n"
+        },
+        {
+          "path": "backend/app/routers/auth.py",
+          "content": "from fastapi import APIRouter, Depends, HTTPException\nfrom sqlalchemy import select\nfrom sqlalchemy.orm import Session\n\nfrom ..auth import create_token, current_user, hash_password, verify_password\nfrom ..db import get_db\nfrom ..models import User\nfrom ..schemas import Credentials, Me, Token\n\nrouter = APIRouter(prefix=\"/api/auth\", tags=[\"auth\"])\n\n\n@router.post(\"/signup\", response_model=Token, status_code=201)\ndef signup(body: Credentials, db: Session = Depends(get_db)):\n    email = body.email.lower()\n    if db.scalar(select(User).where(User.email == email)):\n        raise HTTPException(409, \"An account with this email already exists\")\n    user = User(email=email, password_hash=hash_password(body.password))\n    db.add(user)\n    db.commit()\n    return Token(access_token=create_token(user.id))\n\n\n@router.post(\"/login\", response_model=Token)\ndef login(body: Credentials, db: Session = Depends(get_db)):\n    user = db.scalar(select(User).where(User.email == body.email.lower()))\n    if not user or not verify_password(body.password, user.password_hash):\n        raise HTTPException(401, \"Invalid email or password\")\n    return Token(access_token=create_token(user.id))\n\n\n@router.get(\"/me\", response_model=Me)\ndef me(user: User = Depends(current_user)):\n    return Me(id=user.id, email=user.email, profile=user.profile)\n"
+        },
+        {
+          "path": "frontend/src/pages/Onboarding.jsx",
+          "content": "import { useState } from \"react\";\nimport { useNavigate } from \"react-router-dom\";\nimport Logo from \"../components/Logo\";\nimport { api } from \"../lib/api\";\nimport { useAuth } from \"../lib/auth\";\nimport { eur } from \"../lib/format\";\n\nconst GOALS = [\n  { value: \"retirement\", label: \"Retirement\", hint: \"Build a pension top-up\" },\n  { value: \"home\", label: \"Buy a home\", hint: \"Save for a deposit\" },\n  { value: \"education\", label: \"Education\", hint: \"Children's studies\" },\n  { value: \"wealth_growth\", label: \"Grow my wealth\", hint: \"Long-term capital growth\" },\n  { value: \"emergency_fund\", label: \"Safety net\", hint: \"Precautionary savings\" },\n  { value: \"other\", label: \"Something else\", hint: \"A personal project\" },\n];\n\nconst RISK = [\n  { value: 1, label: \"Very cautious\", hint: \"I can't accept losing money, even temporarily.\" },\n  { value: 2, label: \"Cautious\", hint: \"Small dips are OK if returns are steady.\" },\n  { value: 3, label: \"Balanced\", hint: \"I accept ups and downs for better long-term growth.\" },\n  { value: 4, label: \"Dynamic\", hint: \"I can live with a 20–30% drop in a bad year.\" },\n  { value: 5, label: \"Adventurous\", hint: \"I'm chasing growth and can stomach large swings.\" },\n];\n\nconst STEPS = [\n  { key: \"age\", title: \"How old are you?\", hint: \"Your age helps us gauge how much time your money has to grow.\" },\n  { key: \"annual_income\", title: \"What is your annual net income?\", hint: \"An estimate is fine. It's used to size suggestions, never shared.\" },\n  { key: \"savings_goal\", title: \"What are you investing for?\", hint: \"Pick the goal that matters most right now.\" },\n  { key: \"monthly_investment\", title: \"How much can you invest each month?\", hint: \"Regular contributions are the most reliable way to build wealth.\" },\n  { key: \"risk_tolerance\", title: \"How do you feel about risk?\", hint: \"Imagine your portfolio falls sharply in a market crash.\" },\n  { key: \"horizon_years\", title: \"When will you need this money?\", hint: \"Your investment horizon — the longer, the more volatility you can absorb.\" },\n];\n\nexport default function Onboarding() {\n  const { user, refresh } = useAuth();\n  const navigate = useNavigate();\n  const [step, setStep] = useState(0);\n  const [form, setForm] = useState(\n    user.profile || { age: \"\", annual_income: \"\", savings_goal: \"\", monthly_investment: \"\", risk_tolerance: 0, horizon_years: 10 }\n  );\n  const [error, setError] = useState(\"\");\n  const [busy, setBusy] = useState(false);\n  const s = STEPS[step];\n  const value = form[s.key];\n  const set = (v) => setForm((f) => ({ ...f, [s.key]: v }));\n\n  const valid = {\n    age: value >= 18 && value <= 100,\n    annual_income: value !== \"\" && value >= 0,\n    savings_goal: !!value,\n    monthly_investment: value !== \"\" && value >= 0,\n    risk_tolerance: value >= 1,\n    horizon_years: value >= 1,\n  }[s.key];\n\n  const next = async (e) => {\n    e?.preventDefault();\n    if (!valid) return;\n    if (step < STEPS.length - 1) return setStep(step + 1);\n    setBusy(true);\n    setError(\"\");\n    try {\n      await api(\"/profile\", {\n        method: \"PUT\",\n        body: { ...form, age: +form.age, annual_income: +form.annual_income, monthly_investment: +form.monthly_investment },\n      });\n      await refresh();\n      navigate(\"/portfolio\", { replace: true });\n    } catch (err) {\n      setError(err.message);\n      setBusy(false);\n    }\n  };\n\n  const numberInput = (suffix, props) => (\n    <div className=\"relative\">\n      <input autoFocus type=\"number\" inputMode=\"numeric\" className=\"input pr-14 text-2xl font-semibold\" value={value}\n        onChange={(e) => set(e.target.value === \"\" ? \"\" : Number(e.target.value))} {...props} />\n      <span className=\"absolute right-4 top-1/2 -translate-y-1/2 text-slate-400\">{suffix}</span>\n    </div>\n  );\n\n  return (\n    <div className=\"mx-auto flex min-h-dvh max-w-lg flex-col px-5 py-6\">\n      <div className=\"flex items-center justify-between\">\n        <Logo />\n        <span className=\"text-sm text-slate-500\">{step + 1} / {STEPS.length}</span>\n      </div>\n      <div className=\"mt-4 h-1.5 rounded-full bg-slate-200\">\n        <div className=\"h-full rounded-full bg-brand transition-all\" style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} />\n      </div>\n\n      <form onSubmit={next} className=\"mt-10 flex flex-1 flex-col\">\n        <h1 className=\"text-2xl font-bold leading-tight\">{s.title}</h1>\n        <p className=\"mt-2 text-slate-500\">{s.hint}</p>\n\n        <div className=\"mt-8\">\n          {s.key === \"age\" && numberInput(\"years\", { min: 18, max: 100, placeholder: \"35\" })}\n          {s.key === \"annual_income\" && numberInput(\"€ / yr\", { min: 0, step: 1000, placeholder: \"45000\" })}\n          {s.key === \"monthly_investment\" && numberInput(\"€ / mo\", { min: 0, step: 50, placeholder: \"300\" })}\n\n          {s.key === \"savings_goal\" && (\n            <div className=\"grid grid-cols-2 gap-3\">\n              {GOALS.map((g) => (\n                <button type=\"button\" key={g.value} onClick={() => set(g.value)}\n                  className={`rounded-2xl p-4 text-left ring-1 transition ${value === g.value ? \"bg-ink text-white ring-ink\" : \"bg-white ring-slate-200 hover:ring-slate-400\"}`}>\n                  <div className=\"font-semibold\">{g.label}</div>\n                  <div className={`mt-0.5 text-xs ${value === g.value ? \"text-slate-300\" : \"text-slate-500\"}`}>{g.hint}</div>\n                </button>\n              ))}\n            </div>\n          )}\n\n          {s.key === \"risk_tolerance\" && (\n            <div className=\"space-y-2.5\">\n              {RISK.map((r) => (\n                <button type=\"button\" key={r.value} onClick={() => set(r.value)}\n                  className={`flex w-full items-center gap-4 rounded-2xl p-4 text-left ring-1 transition ${value === r.value ? \"bg-ink text-white ring-ink\" : \"bg-white ring-slate-200 hover:ring-slate-400\"}`}>\n                  <span className={`grid size-9 shrink-0 place-items-center rounded-full text-sm font-bold ${value === r.value ? \"bg-brand text-ink\" : \"bg-slate-100\"}`}>{r.value}</span>\n                  <span>\n                    <span className=\"block font-semibold\">{r.label}</span>\n                    <span className={`block text-sm ${value === r.value ? \"text-slate-300\" : \"text-slate-500\"}`}>{r.hint}</span>\n                  </span>\n                </button>\n              ))}\n            </div>\n          )}\n\n          {s.key === \"horizon_years\" && (\n            <div>\n              <div className=\"text-center text-5xl font-bold tabular-nums\">{value}<span className=\"text-xl font-medium text-slate-400\"> {value === 1 ? \"year\" : \"years\"}</span></div>\n              <input type=\"range\" min=\"1\" max=\"40\" value={value} onChange={(e) => set(Number(e.target.value))} className=\"mt-8 w-full accent-ink\" />\n              <div className=\"mt-1 flex justify-between text-xs text-slate-400\"><span>1 yr</span><span>40 yrs</span></div>\n            </div>\n          )}\n\n          {s.key === \"monthly_investment\" && value > 0 && (\n            <p className=\"mt-3 text-sm text-slate-500\">That's {eur(value * 12)} a year.</p>\n          )}\n        </div>\n\n        {error && <p className=\"mt-6 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700\">{error}</p>}\n\n        <div className=\"mt-auto flex gap-3 pt-10\">\n          {step > 0 && <button type=\"button\" onClick={() => setStep(step - 1)} className=\"btn-ghost flex-1\">Back</button>}\n          <button disabled={!valid || busy} className=\"btn-primary flex-[2]\">\n            {step === STEPS.length - 1 ? (busy ? \"Saving…\" : \"Finish\") : \"Continue\"}\n          </button>\n        </div>\n      </form>\n    </div>\n  );\n}\n"
+        },
+        {
+          "path": "frontend/src/pages/Recommendations.jsx",
+          "content": "import { Link } from \"react-router-dom\";\nimport ActionBadge, { SEVERITY } from \"../components/ActionBadge\";\nimport Disclaimer from \"../components/Disclaimer\";\nimport Spinner from \"../components/Spinner\";\nimport useAnalysis from \"../lib/useAnalysis\";\n\nexport default function Recommendations() {\n  const { analysis, generating, error, generate } = useAnalysis();\n  const a = analysis?.analysis;\n\n  return (\n    <div className=\"space-y-5\">\n      <div className=\"flex items-end justify-between gap-3\">\n        <div>\n          <h1 className=\"text-2xl font-bold\">Your analysis</h1>\n          <p className=\"text-sm text-slate-500\">\n            {analysis ? (analysis.source === \"demo\" ? \"Demo mode — rule-based, set MISTRAL_API_KEY for AI analysis\" : \"Generated by Mistral AI\") : \"Personalised to your profile and holdings\"}\n          </p>\n        </div>\n        <button onClick={generate} disabled={generating} className=\"btn-primary shrink-0 px-3 py-2 text-xs\">\n          {generating ? \"Analysing…\" : analysis ? \"Regenerate\" : \"Analyse\"}\n        </button>\n      </div>\n\n      <Disclaimer text={analysis?.disclaimer} />\n      {error && (\n        <p className=\"rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700\">\n          {error} {error.includes(\"holding\") && <Link to=\"/portfolio\" className=\"font-semibold underline\">Add holdings</Link>}\n        </p>\n      )}\n\n      {analysis === undefined || generating ? (\n        <div className=\"card\"><Spinner label={generating ? \"Mistral is analysing your portfolio…\" : \"Loading…\"} /></div>\n      ) : !a ? (\n        <div className=\"card text-center text-slate-600\">\n          No analysis yet. Click <strong>Analyse</strong> to get your personalised recommendations.\n        </div>\n      ) : (\n        <>\n          <section className=\"card\">\n            <h2 className=\"text-sm font-semibold uppercase tracking-wide text-slate-500\">Summary</h2>\n            <p className=\"mt-2 leading-relaxed\">{a.summary}</p>\n          </section>\n\n          <section className={`rounded-2xl p-5 ring-1 ${SEVERITY[a.risk_flag.severity]}`}>\n            <div className=\"flex items-center gap-2 text-xs font-semibold uppercase tracking-wide\">\n              <span>⚠ Risk flag</span><span className=\"opacity-60\">· {a.risk_flag.severity}</span>\n            </div>\n            <h3 className=\"mt-1 font-semibold\">{a.risk_flag.title}</h3>\n            <p className=\"mt-1 text-sm leading-relaxed\">{a.risk_flag.detail}</p>\n          </section>\n\n          <section className=\"space-y-3\">\n            <h2 className=\"font-semibold\">Recommendations</h2>\n            {a.recommendations.map((r, i) => (\n              <article key={i} className=\"card\">\n                <div className=\"flex items-center gap-2\">\n                  <span className=\"grid size-6 place-items-center rounded-full bg-slate-100 text-xs font-bold\">{i + 1}</span>\n                  <ActionBadge action={r.action} />\n                  <span className=\"text-sm font-medium text-slate-500\">{r.ticker}</span>\n                </div>\n                <h3 className=\"mt-3 font-semibold\">{r.title}</h3>\n                <p className=\"mt-1 text-sm leading-relaxed text-slate-600\">{r.rationale}</p>\n              </article>\n            ))}\n          </section>\n\n          <section className=\"card\">\n            <h2 className=\"font-semibold\">Rebalancing suggestion</h2>\n            <p className=\"mt-2 text-sm leading-relaxed text-slate-600\">{a.rebalancing.summary}</p>\n            <ul className=\"mt-4 space-y-3\">\n              {a.rebalancing.target_allocation.map((t, i) => (\n                <li key={i}>\n                  <div className=\"flex justify-between text-sm\">\n                    <span>{t.label}</span>\n                    <span className=\"font-semibold tabular-nums\">{Number(t.percent).toFixed(0)}%</span>\n                  </div>\n                  <div className=\"mt-1 h-2 rounded-full bg-slate-100\">\n                    <div className=\"h-full rounded-full bg-brand\" style={{ width: `${Math.min(100, Number(t.percent) || 0)}%` }} />\n                  </div>\n                </li>\n              ))}\n            </ul>\n          </section>\n\n          <Disclaimer text={analysis.disclaimer} />\n        </>\n      )}\n    </div>\n  );\n}\n"
+        },
+        {
+          "path": "frontend/src/components/Disclaimer.jsx",
+          "content": "export const DISCLAIMER =\n  \"Wealthpilot provides information and educational content only. This is not financial advice. Always consult a certified investment advisor before making investment decisions.\";\n\nexport default function Disclaimer({ text = DISCLAIMER, className = \"\" }) {\n  return (\n    <p role=\"note\" className={`flex gap-2 rounded-xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900 ring-1 ring-amber-200 ${className}`}>\n      <svg viewBox=\"0 0 20 20\" className=\"mt-0.5 size-4 shrink-0 fill-amber-500\" aria-hidden>\n        <path d=\"M10 1.5a8.5 8.5 0 100 17 8.5 8.5 0 000-17zM9 6h2v6H9V6zm0 7.5h2v2H9v-2z\" />\n      </svg>\n      <span><strong className=\"font-semibold\">Disclaimer.</strong> {text}</span>\n    </p>\n  );\n}\n"
+        }
+      ],
+      "sha256": "b6d4285ce78f00669260bdf3f9bc3a062d051ec0208a143a2657eeb73aee0a91"
+    },
+    {
+      "id": "art-0.9.0-PRODUCT_GUIDE",
+      "release_id": "rel-0.9.0",
+      "kind": "product_spec",
+      "path": "docs/PRODUCT_GUIDE.md",
+      "text": "# Wealthpilot — Product Guide\n\nOct 4, 2026 · Lorenzo\n\n## Welcome to Wealthpilot\n\nWealthpilot is a web app that helps French retail investors understand their investment portfolio and get personalised, AI-generated ideas about it. It is an information and education tool: **it never buys, sells or moves money, and it does not provide regulated financial advice.**\n\nThis guide explains, in plain language, what the app does, how each feature works and what happens to your data. It describes the current version (Phase 1 prototype).\n\n**Wealthpilot does:**\n\n- Ask you six questions to build your investor profile (age, income, goal, monthly budget, attitude to risk, time horizon).\n- Let you record the investments you already hold elsewhere, by typing them in.\n- Show what those investments are worth today, using public market prices.\n- Measure how risky your portfolio is and compare that with the risk you said you are comfortable with.\n- Generate three personalised recommendations, a rebalancing suggestion and a risk warning, using an AI model.\n\n**Wealthpilot does not:**\n\n- Connect to your bank or brokerage account. Nothing is imported automatically.\n- Place orders, execute trades or hold your money or securities.\n- Charge commissions or receive payments from the products it mentions.\n- Replace a certified investment advisor. Every recommendation screen says so.\n\n## Getting started\n\nYou need an email address and a password of at least 8 characters to create an account. No identity check, phone number or bank details are requested.\n\n1. Open Wealthpilot and choose **Create an account**.\n2. Enter your email and a password. You are signed in straight away.\n3. Complete the six-question investor profile (next section).\n4. Add the investments you hold.\n5. Open your dashboard and request your first analysis.\n\n**Signing in.** You stay signed in on that browser for 7 days, after which you are asked to log in again. **Log out** in the top bar ends the session on that device.\n\n**Demo account.** A demo account with a completed profile and five sample investments is available from the login page, so you can explore the app without entering your own information.\n\n**Not yet available in this version:** email verification, password reset, account deletion from within the app, and two-factor authentication.\n\n## Your investor profile\n\nSix questions, one per screen, tell Wealthpilot who you are as an investor. Your answers shape every recommendation, so it is worth keeping them up to date.\n\n| # | Question | What you can answer | Why we ask |\n| --- | --- | --- | --- |\n| 1 | How old are you? | 18 to 100 | Younger investors usually have more time to recover from market falls. |\n| 2 | What is your annual net income? | Any amount in euros | Puts the size of your investments in context. |\n| 3 | What are you investing for? | Retirement, buying a home, education, growing wealth, safety net, something else | Different goals call for different levels of caution. |\n| 4 | How much can you invest each month? | Any amount in euros | Lets suggestions focus on where new money should go. |\n| 5 | How do you feel about risk? | 1 Very cautious to 5 Adventurous, each with a plain description | Your stated tolerance is compared with the measured risk of your portfolio. |\n| 6 | When will you need this money? | 1 to 40 years | Longer horizons can absorb more ups and downs. |\n\nThe risk scale is described to you as follows: 1, \"I can't accept losing money, even temporarily\"; 2, \"Small dips are OK if returns are steady\"; 3, \"I accept ups and downs for better long-term growth\"; 4, \"I can live with a 20–30% drop in a bad year\"; 5, \"I'm chasing growth and can stomach large swings\".\n\nYou can change your answers at any time with **Edit profile** on the dashboard. Only the latest answers are kept.\n\nThe profile is self-declared. Wealthpilot does not check your answers, and does not ask about your investment knowledge, experience, existing debts or total wealth.\n\n## Your portfolio\n\nYou add your investments by hand: Wealthpilot has no connection to your bank or broker. For each holding you enter three things.\n\n| Field | What to enter | Example |\n| --- | --- | --- |\n| Ticker | The instrument's Yahoo Finance symbol. Paris listings end in .PA. | MC.PA (LVMH), CW8.PA (MSCI World ETF), AAPL (Apple) |\n| Quantity | How many shares or units you own. Fractions are allowed. | 10 |\n| Average buy price | What you paid per share, in the currency the instrument trades in. | 150 (euros for MC.PA, dollars for AAPL) |\n\nWhen you type a ticker, Wealthpilot looks it up and shows the instrument's name and current price, so you can check it is the right one. You can edit or remove a holding at any time.\n\n**How values are calculated.**\n\n- **Prices** come from Yahoo Finance, a free public data source. They may be delayed and are refreshed at most every 5 minutes.\n- **Currency.** Everything is shown in euros. Holdings priced in another currency (for example US dollars) are converted at today's exchange rate. Your gain or loss is therefore measured at today's rate, not the rate on the day you bought.\n- **Gain or loss** = today's value minus what you paid (quantity × average buy price). It is before tax and fees, and is not realised until you sell.\n- **Weight** = each holding's share of the total value.\n\n**If no price is found** (a mistyped or unsupported ticker, or the data source is unavailable), the holding is shown with a NO PRICE label and valued at your buy price until a price becomes available.\n\n## Your dashboard\n\nThe dashboard gives you a one-screen view of your portfolio: its value, how risky it is, how it is spread and what markets are doing.\n\n- **Portfolio value**: the total value in euros, your unrealised gain or loss in euros and percent, the number of holdings and the amount invested.\n- **Risk score**: a gauge from 1 to 5 showing how risky your portfolio is today, with a dashed marker for the tolerance you stated in your profile.\n- **Allocation**: a bar showing what share of your money sits in each holding.\n- **AI recommendations**: a summary of your latest analysis and a button to generate a new one (see next section).\n- **Market context**: the latest level and daily change of the CAC 40, Euro Stoxx 50, S&P 500 and the euro–dollar exchange rate.\n\n### How the risk score is calculated\n\nThe score measures how much your portfolio's value has moved up and down over the past year (its volatility). It takes into account how your holdings move together, so a mix of investments that don't move in step scores lower than any one of them alone.\n\n| Label shown | Score range | Yearly swings (annualised volatility) |\n| --- | --- | --- |\n| Very conservative | 1.0 to 1.4 | Below 5% |\n| Conservative | 1.5 to 2.4 | 5% to 9.5% |\n| Balanced | 2.5 to 3.4 | 9.5% to 16% |\n| Dynamic | 3.5 to 4.4 | 16% to 25% |\n| Aggressive | 4.5 to 5.0 | 25% and above |\n\nThese bands loosely follow the EU's standard risk indicator used on investment product documents (the PRIIPs SRI). If a single company makes up more than 40% of your portfolio, half a point is added to reflect the extra risk of putting many eggs in one basket. Funds and ETFs are not counted as single companies.\n\nThe score describes the past. Past volatility does not predict future returns or losses.\n\n## Recommendations\n\nAn analysis is created only when you press **Analyse** (or **Refresh / Regenerate**). It is generated by Mistral AI's large language model and is personalised using your profile and your holdings.\n\n**What each analysis contains:**\n\n1. **A summary**: two or three sentences assessing your portfolio against your profile.\n2. **Three recommendations**, each labelled Buy, Sell, Hold or Rebalance, naming a specific instrument and explaining why.\n3. **A risk flag**: the single most important risk to be aware of, rated low, medium or high.\n4. **A rebalancing suggestion**: a target split of your money across asset types (for example equities, bonds and cash), in percentages.\n\n**How it is generated.** Wealthpilot sends the AI your profile answers, your holdings and their current prices, plus fixed instructions. The instructions ask it to tailor ideas to your risk tolerance and horizon, prefer broad, low-cost funds, mention French account types (PEA, assurance-vie, compte-titres) where relevant, and present its output as educational. The answer is checked for the expected structure before it is shown; if it is malformed you see an error and nothing is saved.\n\n**Saved analyses.** Each analysis is saved with the date it was generated and the dashboard shows the latest one. It is not updated automatically when prices or your holdings change, so refresh it after making changes.\n\n**Demo mode.** If the AI service is not configured, Wealthpilot produces a simpler rule-based analysis instead (for example: flag a single stock above 25% of the portfolio, or a holding down more than 10%). These analyses are labelled \"demo mode\" on screen.\n\n**Please keep in mind:**\n\n- AI models can be wrong, out of date or inconsistent. Two requests on the same data may give different answers.\n- The AI only knows what is described above. It does not know your tax situation, debts, other savings, or personal circumstances beyond your profile.\n- Nothing is executed. Acting on any idea is your decision, through your own bank or broker.\n\nEvery screen that shows recommendations displays this notice:\n\n> *Wealthpilot provides information and educational content only. This is not financial advice. Always consult a certified investment advisor before making investment decisions.*\n\n## Your data\n\nWealthpilot stores only what you type in and the analyses it generates for you. Two outside services are used: Mistral AI, which receives your profile and holdings without your email address, and Yahoo Finance, which receives ticker symbols only.\n\n```mermaid\nflowchart TB\n    you[\"You, in your browser\"]\n    fonts[\"Google Fonts\"]\n    server[\"Wealthpilot server and database<br/>Stores your account, profile,<br/>holdings and every analysis<br/>Your email never leaves it\"]\n    mistral[\"Mistral AI<br/>Generates the analysis\"]\n    yahoo[\"Yahoo Finance<br/>Public market data\"]\n\n    you -- \"IP address\" --> fonts\n    you <-- \"email, password, profile, holdings<br/>results shown back to you\" --> server\n    server <-- \"sends: profile, holdings, prices<br/>never your email or account ID<br/>returns: the analysis\" --> mistral\n    server <-- \"sends: ticker symbols only<br/>returns: prices and FX rates\" --> yahoo\n```\n\nOnly an analysis request sends personal information outside Wealthpilot, and it goes to Mistral AI without your email.\n\n| Data | Where it comes from | Where it is kept | Shared with |\n| --- | --- | --- | --- |\n| Email address | You, at sign-up | Wealthpilot database | No one |\n| Password | You, at sign-up | Wealthpilot database, scrambled (bcrypt hash), never stored in readable form | No one |\n| Investor profile: age, annual income, goal, monthly amount, risk tolerance, horizon | You, in the questionnaire | Wealthpilot database (latest answers only) | Mistral AI, when you request an analysis |\n| Holdings: ticker, quantity, average buy price | You, on the Portfolio page | Wealthpilot database | Mistral AI, with current prices and values, when you request an analysis; Yahoo Finance receives the ticker symbol only |\n| Analyses | Generated by Mistral AI or demo mode | Wealthpilot database, every analysis with its date | No one |\n| Sign-in token | Created at login | Your browser's local storage, expires after 7 days | No one |\n\n**What we do not collect:** your name, address, phone number, date of birth, nationality, tax number, bank or brokerage credentials, account numbers, or any payment information. There are no advertising or analytics trackers.\n\n**Third parties.**\n\n- **Mistral AI** (French company) processes the profile and holdings sent with each analysis request. Your email and account ID are not sent.\n- **Yahoo Finance** is queried by Wealthpilot's server for prices. It receives ticker symbols, never anything that identifies you.\n- **Google Fonts**: the app's typeface is loaded from Google's servers, which see your browser's IP address.\n\n## Important information and limitations\n\nWealthpilot is an information and education tool, not an investment advisor, and using it does not create an advisory relationship.\n\n- **Not financial advice.** Content is general and educational, even when it names a specific instrument. Speak to a certified investment advisor (in France, a *conseiller en investissements financiers* registered with ORIAS) before making decisions.\n- **Investing involves risk.** You can lose some or all of the money you invest. Past performance and past volatility do not predict future results.\n- **Data accuracy.** Prices come from a free public source and may be delayed, incomplete or wrong. Values depend on the holdings you enter: a typo in a quantity or price changes every figure.\n- **AI output.** Recommendations are produced by an AI model and may contain errors, outdated information or ideas unsuitable for you. They are not reviewed by a human before you see them.\n- **No tax advice.** Mentions of PEA, assurance-vie or flat-tax treatment are general. Your tax situation may differ.\n- **No execution.** Wealthpilot never places orders. Any transaction is made by you, through your own provider, at your own discretion.\n- **Prototype.** This is an early version. Features, calculations and wording may change.\n\n## Frequently asked questions\n\n**Can Wealthpilot buy or sell for me?**\nNo. It only reads the information you enter and suggests ideas. You make any trade yourself, with your own bank or broker.\n\n**Does Wealthpilot connect to my bank or broker?**\nNo. You type in your holdings. Nothing is imported and no login details for other services are requested.\n\n**Is Wealthpilot paid to recommend certain products?**\nNo. It receives no commissions or payments from the instruments it mentions.\n\n**Why does my risk score differ from the risk tolerance I chose?**\nThe tolerance is what you told us you are comfortable with. The score measures how your actual holdings have behaved over the past year. A gap between the two is exactly what the analysis helps you think about.\n\n**Why did my recommendations change?**\nEach new analysis uses the latest prices and your current profile and holdings, and AI models do not always give the same answer twice.\n\n**My ticker shows NO PRICE. What should I do?**\nCheck the symbol on Yahoo Finance; Paris listings end in .PA, Amsterdam in .AS. The holding is valued at your buy price until a price is found.\n\n**Who sees my information?**\nOnly you, through your account. Your profile and holdings are sent to Mistral AI when you ask for an analysis, without your email address. See *Your data*.\n\n**How do I delete my account?**\nAccount deletion is not yet available in the app. Contact the Wealthpilot team to request it.\n\n## Appendix: notes for legal review\n\nThis appendix is internal, not customer-facing. It sets out how the current build behaves, as verified in the code.\n\n### How the current build behaves\n\n| Area | Current behaviour |\n| --- | --- |\n| Output | Three recommendations per analysis, each with an action (buy, sell, hold, rebalance), a named ticker and a rationale; a target allocation in percent; a risk flag. |\n| Personalisation | Based on the six self-declared profile answers, the holdings and live prices. |\n| Human review | None. AI output is checked only for format, then shown and stored. |\n| AI provider | Mistral AI API, model mistral-large-latest, called from the server. The request has no email or user ID. |\n| AI instructions | Tells the model it is an educational assistant, not to present output as regulated advice, to prefer diversified low-cost UCITS ETFs, and to mention PEA, assurance-vie and compte-titres where relevant. |\n| Labelling | The disclaimer is shown on the dashboard recommendations panel and twice on the Recommendations page. The page says \"Generated by Mistral AI\" or \"Demo mode\". |\n| Demo mode | Rule-based text used when no AI key is set. It includes tax statements (PEA treatment after 5 years, 30% flat tax outside a PEA). |\n| Sign-up | Email and password only. No terms of service, privacy notice or consent step. No age check at sign-up; the profile only accepts ages 18 to 100. |\n| Retention | Profile, holdings and every analysis kept indefinitely. No in-app deletion or export. |\n| Logs | Web server access logs record IP addresses and request paths. |\n| Hosting | Not yet decided (prototype runs locally). |\n",
+      "files": [],
+      "sha256": "ad46c920ec385a145d067024f70bda210fe661ccc8d1a1c6ee1254e3e0c01685"
+    },
+    {
+      "id": "art-0.9.0-TECHNICAL_ARCHITECTURE",
+      "release_id": "rel-0.9.0",
+      "kind": "product_spec",
+      "path": "docs/TECHNICAL_ARCHITECTURE.md",
+      "text": "# Wealthpilot — Technical Architecture\n\nOct 4, 2026 · Lorenzo\n\n## Overview\n\nWealthpilot is a React frontend, a FastAPI backend and a PostgreSQL database, run together with Docker Compose. It currently runs on a developer machine. Code: GitHub `Artifacts7/FinTechProto` (private), branch `main`.\n\n## Architecture\n\nThe browser reaches the app through nginx, which serves the React build and forwards API calls to the FastAPI backend. Only the backend talks to Postgres and to external services.\n\n```mermaid\nflowchart TB\n    browser[\"User's browser\"]\n    fonts[\"Google Fonts\"]\n    subgraph compose[\"Docker Compose stack (local today)\"]\n        nginx[\"Frontend: nginx 1.27<br/>static React app, proxies /api/\"]\n        backend[\"Backend: FastAPI, Python 3.12<br/>auth, portfolio, risk, AI calls\"]\n        pg[\"PostgreSQL 16<br/>Docker volume pgdata\"]\n    end\n    mistral[\"Mistral AI<br/>HTTPS, no email or ID\"]\n    yahoo[\"Yahoo Finance<br/>HTTPS, tickers only\"]\n\n    browser -- \"IP address\" --> fonts\n    browser -- \"HTTP :3000 (no TLS yet)\" --> nginx\n    nginx -- \"/api/ to :8000\" --> backend\n    backend -- \"SQL\" --> pg\n    backend --> mistral\n    backend --> yahoo\n```\n\nThe backend's port 8000 is also published to the host, so the API can be reached directly without going through nginx; the database port is not published.\n\n## Technology stack\n\nThree containers, defined in `docker-compose.yml`: a static frontend behind nginx, a Python API, and PostgreSQL.\n\n| Component | Technology | Version | Runs as |\n| --- | --- | --- | --- |\n| Frontend | React, React Router, Tailwind CSS, built with Vite | React 18.3, Router 6.30, Tailwind 4.3, Vite 6.4 | Static files served by nginx 1.27-alpine; built in a node:22-alpine stage |\n| Reverse proxy | nginx | 1.27-alpine | Serves the app and forwards `/api/` to the backend container |\n| Backend API | FastAPI on Uvicorn, Python | FastAPI 0.115.6, Uvicorn 0.34.0, Python 3.12-slim | Single Uvicorn process, container user root |\n| ORM and driver | SQLAlchemy, psycopg | 2.0.36, 3.2.3 | In the backend process |\n| Validation | Pydantic (with email-validator) | 2.10.4 | Request and AI-response schemas |\n| Auth libraries | PyJWT, bcrypt | 2.10.1, 4.2.1 | In the backend process |\n| HTTP client | httpx | 0.28.1 | Calls to Mistral AI |\n| Market data | yfinance (unofficial Yahoo Finance client) | 1.7.0 | In the backend process, 5-minute in-memory cache |\n| Database | PostgreSQL | 16-alpine | Docker named volume `pgdata` |\n\nPython dependencies are pinned in `backend/requirements.txt`. Frontend dependencies are locked in `frontend/package-lock.json`.\n\n## Data model\n\nFour tables, all keyed to a user. The schema is created by SQLAlchemy `create_all` when the app starts; there are no migrations.\n\n| Table | Fields | Notes |\n| --- | --- | --- |\n| `users` | id, email (unique), password_hash, created_at | Email stored lower-cased; password as bcrypt hash |\n| `risk_profiles` | user_id (unique), age, annual_income, savings_goal, monthly_investment, risk_tolerance (1–5), horizon_years, updated_at | One row per user, overwritten on edit |\n| `holdings` | id, user_id, ticker, quantity, avg_buy_price | Buy price in the instrument's trading currency |\n| `recommendations` | id, user_id, payload (JSON), source (`mistral` or `demo`), created_at | One row per generated analysis; latest shown in the UI |\n\n- `users` cascades to `risk_profiles` and `holdings` at ORM level; `recommendations` reference `user_id` with no ORM relationship.\n- On every backend start, `seed.py` creates the demo user `demo@wealthpilot.fr` with 5 holdings if it does not exist.\n\n## External services and data flows\n\nThree external services are contacted. Only Mistral AI receives personal data, and only when a user asks for an analysis.\n\n| Service | Called from | When | Data sent | Transport |\n| --- | --- | --- | --- | --- |\n| Mistral AI (`api.mistral.ai/v1/chat/completions`, model `mistral-large-latest`) | Backend | On `POST /api/recommendations` | Profile fields, holdings with prices, values, weights and P&L, system instructions. No email or user ID. | HTTPS, bearer API key, 60 s timeout, JSON response mode |\n| Yahoo Finance (via yfinance) | Backend | Portfolio views, ticker lookups, market panel; cached 5 min per symbol in process memory | Ticker symbols and FX pairs | HTTPS |\n| Google Fonts | User's browser | Page load | Standard font request | HTTPS |\n\n- Mistral network errors or responses that fail schema validation return HTTP 502 and nothing is stored.\n- With `MISTRAL_API_KEY` empty, the backend uses a local rule-based generator and stores the result with source `demo`.\n\n## Authentication and authorisation\n\nUsers sign in with email and password and receive a signed token valid for 7 days. Every data endpoint looks records up through the signed-in user, so one user cannot read or change another's data.\n\n| Aspect | Implementation |\n| --- | --- |\n| Password storage | bcrypt, default cost (12 rounds), per-password salt |\n| Password rules | 8–128 characters |\n| Email | Format-validated, lower-cased, unique |\n| Token | JWT, HS256, signed with `JWT_SECRET`; claims `sub` (user ID) and `exp` (7 days) |\n| Token on the client | Stored in browser `localStorage`, sent as `Authorization: Bearer` |\n| Logout | Clears the token in the browser |\n| `JWT_SECRET` default | `dev-secret-change-me` when unset |\n| Data access | Profile, holdings and recommendations are read and written through the authenticated user; holding updates and deletes check ownership and return 404 otherwise |\n| Roles | One user type; no admin interface |\n\n## Network, secrets and logging\n\n| Area | How it works |\n| --- | --- |\n| Ports | Host 3000 → nginx :80; host 8000 → backend :8000; Postgres :5432 internal to the Compose network only |\n| Protocols | HTTP between browser and nginx and between containers; HTTPS for calls to Mistral and Yahoo |\n| Routing | nginx serves the built React app and proxies `/api/` to `backend:8000` with a 90 s read timeout; other paths fall back to `index.html` |\n| CORS | Backend allows `http://localhost:5173` (Vite dev server) |\n| API docs | FastAPI's `/docs` and `/openapi.json` enabled |\n| Secrets | `MISTRAL_API_KEY`, `JWT_SECRET`, `DATABASE_URL` from environment or optional `.env` (git-ignored); Postgres user and password set in `docker-compose.yml` |\n| Database storage | Docker named volume `pgdata` on the host |\n| Request validation | Pydantic schemas on all request bodies (types, ranges, enumerations) |\n| Database queries | SQLAlchemy ORM |\n| AI output | Parsed into a strict Pydantic schema before storing or rendering; rendered as text by React |\n| Logging | Uvicorn and nginx access logs plus Python `logging` at INFO, all to container stdout |\n| Container user | Backend runs as root in `python:3.12-slim` |\n\n## Runtime and deployment\n\n`docker compose up --build` builds and starts three services on one default bridge network:\n\n| Service | Image / build | Startup | Health and ordering |\n| --- | --- | --- | --- |\n| `db` | `postgres:16-alpine` | Creates database `wealthpilot` on first run | `pg_isready` every 3 s, up to 20 retries |\n| `backend` | Built from `backend/Dockerfile` on `python:3.12-slim` | Runs `python seed.py`, then `uvicorn app.main:app --host 0.0.0.0 --port 8000`; tables created at import | Starts after `db` is healthy |\n| `frontend` | Multi-stage: `node:22-alpine` runs `npm ci` and `vite build`, output copied into `nginx:1.27-alpine` | nginx with `frontend/nginx.conf` | Starts after `backend` |\n\nThe app currently runs on a developer machine only. There is no hosted environment, CI pipeline or deployment automation.\n\n## Development\n\nOne private GitHub repository, one branch.\n\n| Area | How it works |\n| --- | --- |\n| Repository | GitHub `Artifacts7/FinTechProto`, private, branch `main` |\n| Workflow | Commits pushed directly to `main` |\n| Builds | Local, via Docker Compose |\n| Tests | Manual: API calls, scripted browser walkthrough, mocked Mistral response |\n| Dependencies | Python pinned in `backend/requirements.txt`; JS locked in `frontend/package-lock.json` |\n| Schema changes | SQLAlchemy `create_all` at startup |\n| Config | `.env.example` committed; `.env` git-ignored |\n| Docs | `README.md`, `docs/PRODUCT_GUIDE.md`, this document |\n\n## Target production deployment (planned, not yet built)\n\n> **Planned design. None of the infrastructure in this section exists yet.** Everything above describes the system as it runs today. Update this section to match what is actually provisioned before relying on it.\n\nProduction runs on AWS in `eu-west-3` (Paris), spread across three availability zones. The containers built today are reused unchanged: the backend image runs on ECS Fargate, the frontend build is served from S3 through CloudFront, and Postgres moves to RDS. Everything is defined in Terraform in a separate `wealthpilot-infra` repository.\n\n```mermaid\nflowchart TB\n    users[\"Users\"]\n    cf[\"CloudFront + WAF\"]\n    s3[\"S3: React build\"]\n    ext[\"External APIs<br/>Mistral AI, Yahoo Finance\"]\n    subgraph vpc[\"VPC 10.20.0.0/16 · eu-west-3, 3 AZs (planned)\"]\n        subgraph pub[\"Public subnets\"]\n            alb[\"Load balancer (ALB)\"]\n            nat[\"NAT Gateway\"]\n        end\n        subgraph app[\"Private app subnets\"]\n            ecs[\"Backend on ECS Fargate<br/>2 to 6 tasks, non-root\"]\n        end\n        subgraph data[\"Private data subnets\"]\n            rds[\"RDS PostgreSQL 16<br/>Multi-AZ, KMS-encrypted\"]\n        end\n    end\n\n    users -- \"HTTPS\" --> cf\n    cf -- \"static files\" --> s3\n    cf -- \"/api/* over HTTPS\" --> alb\n    alb -- \"port 8000\" --> ecs\n    ecs -- \"port 5432, TLS\" --> rds\n    ecs -- \"outbound\" --> nat\n    nat --> ext\n```\n\nRequests enter through CloudFront only. The backend sits in private subnets and reaches external APIs through NAT, and the database accepts connections from the backend alone.\n\n### Components\n\n| Layer | AWS service | Configuration |\n| --- | --- | --- |\n| DNS | Route 53 | `wealthpilot.fr` apex and `app.` / `api.` records |\n| Edge and frontend | CloudFront + S3 | React build in a private S3 bucket (Origin Access Control); CloudFront serves it over HTTPS with an ACM certificate and routes `/api/*` to the load balancer |\n| Web firewall | AWS WAF on CloudFront | AWS managed core rule set; rate limit of 100 requests per 5 minutes per IP on `/api/auth/*` |\n| Load balancer | Application Load Balancer | Public subnets, HTTPS only (TLS 1.2+), ACM certificate, accepts traffic from CloudFront only |\n| Backend | ECS Fargate | Backend image from ECR; 2 tasks minimum, 6 maximum, 0.5 vCPU / 1 GB each, scaling at 60% CPU; private subnets; runs as a non-root user |\n| Database | RDS for PostgreSQL 16 | `db.t4g.medium`, Multi-AZ, 50 GB gp3, private subnets, TLS required for connections |\n| Outbound traffic | NAT Gateway | One per AZ; backend reaches Mistral and Yahoo through it |\n| Container registry | ECR | Image scanning on push; images tagged by git SHA |\n\n### Network\n\n| Item | Configuration |\n| --- | --- |\n| VPC | `10.20.0.0/16`, 3 AZs |\n| Public subnets | ALB and NAT Gateways only |\n| Private app subnets | ECS tasks; no public IPs |\n| Private data subnets | RDS only; no route to the internet |\n| Security groups | ALB accepts 443 from the CloudFront managed prefix list. ECS accepts 8000 from the ALB only. RDS accepts 5432 from the ECS security group only. |\n| Interactive API docs | `/docs` and `/openapi.json` disabled in production |\n\n### Data storage and secrets\n\n| Item | Configuration |\n| --- | --- |\n| Database encryption | RDS storage encrypted with a customer-managed KMS key |\n| S3 encryption | SSE-S3; public access blocked at account level |\n| Secrets | `JWT_SECRET`, `MISTRAL_API_KEY` and database credentials in AWS Secrets Manager, injected into ECS tasks at start; RDS credentials rotated every 30 days |\n| Data residency | All storage and compute in `eu-west-3`; analysis requests go to Mistral AI's EU API endpoint |\n\n### Environments and accounts\n\n| Environment | AWS account | Purpose | Data |\n| --- | --- | --- | --- |\n| Production | `wealthpilot-prod` | Live service | Real user data |\n| Staging | `wealthpilot-staging` | Pre-release testing; same Terraform modules, smaller sizes (1 ECS task, single-AZ RDS) | Seed and synthetic data only |\n| Development | Developer machines | Docker Compose as described above | Demo user only |\n\nAccounts sit under one AWS Organization, with CloudTrail enabled organisation-wide and logs sent to a separate `wealthpilot-audit` account.\n\n### CI/CD\n\n1. Pull request to `main` triggers GitHub Actions: lint, backend tests, frontend build, Docker build, and Trivy scan of the image.\n2. Merge to `main` (one approving review required) pushes the image to ECR tagged with the commit SHA, uploads the frontend build to the staging S3 bucket, and deploys to staging.\n3. A manual approval in the GitHub `production` environment promotes the same image and frontend build to production. ECS rolls out with a circuit breaker that rolls back on failed health checks.\n4. GitHub authenticates to AWS with OIDC role assumption; no long-lived AWS keys are stored in GitHub.\n5. Database schema changes run as Alembic migrations in a one-off ECS task before the new backend version starts.\n\n### Access\n\n| Who | How | Scope |\n| --- | --- | --- |\n| Engineers | AWS IAM Identity Center with MFA, linked to Google Workspace | Read-only in production by default; time-limited admin role with approval |\n| Database access | SSM Session Manager port forwarding through an ECS task; no bastion host or public endpoint | Session logs to CloudWatch |\n| CI | GitHub OIDC role | Push to ECR, update ECS services, write to frontend S3 bucket |\n\n### Backups and recovery\n\n| Item | Configuration |\n| --- | --- |\n| RDS automated backups | Daily, 14-day retention, point-in-time recovery |\n| Snapshot copies | Daily copy to `eu-west-1` (Ireland), 30-day retention |\n| Targets | RPO 5 minutes, RTO 4 hours |\n| Restore test | Quarterly restore into staging |\n\n### Monitoring and logging\n\n| Item | Configuration |\n| --- | --- |\n| Application logs | ECS tasks log to CloudWatch Logs as JSON; 90-day retention, then archived to S3 for 1 year |\n| Load balancer and CloudFront logs | Delivered to an S3 log bucket in the audit account |\n| Metrics and alarms | CloudWatch alarms on ALB 5xx rate > 2%, p95 latency > 2 s, ECS running tasks < 2, RDS CPU > 80%, RDS free storage < 10 GB, Mistral error rate > 10% |\n| Alerting | Alarms go to an SNS topic, which posts to Slack `#wealthpilot-alerts` and pages the on-call engineer |\n| Uptime check | Route 53 health check on `/api/health` every 30 s |\n",
+      "files": [],
+      "sha256": "074a00816c259036587b3cc9d0dc56e84c408754763fbf0f9eefeb256e6ae35b"
+    },
+    {
+      "id": "art-0.9.0-business-plan",
+      "release_id": "rel-0.9.0",
+      "kind": "business_plan",
+      "path": "compliance/business-plan.md",
+      "text": "> **FICTIONAL DEMO DOCUMENT.** Wealthpilot is a fictional company created to demonstrate CCOmmit. Every company detail, figure and registration in this file is invented.\n\n# Wealthpilot SAS: Business Plan 2026–2028\n\nVersion 0.9 · October 2026 · Confidential, prepared for the seed round\n\n## 1. Summary\n\nWealthpilot gives French retail investors a personal investment adviser in their pocket. Users answer a short questionnaire, enter the investments they already hold, and get **personalised buy, sell, hold and rebalance recommendations on named instruments**, generated by AI in seconds and refreshed whenever they want.\n\nTraditional advice in France is expensive, slow and aimed at wealthy clients. A *conseiller en investissements financiers* typically charges €150–€300 per meeting or takes a percentage of assets. Wealthpilot delivers the same personalised guidance at a fraction of the cost, at any time.\n\nWe are raising **€800k** to launch publicly in France in Q1 2027 and to reach 25,000 registered users by the end of 2027.\n\n## 2. Problem\n\n- 9 million French households hold securities, PEA or assurance-vie accounts, but fewer than 1 in 5 have ever had personalised advice.\n- Advice is priced for portfolios above €100k. Younger investors with €5k–€50k are left with generic content, forums and influencers.\n- Existing apps show performance but don't tell users **what to do next**.\n\n## 3. Product\n\nThe product is live as a working prototype (see `docs/PRODUCT_GUIDE.md` and `docs/TECHNICAL_ARCHITECTURE.md`).\n\n1. **Onboarding in under a minute.** Six questions: age, income, goal, monthly budget, risk tolerance and horizon. We deliberately keep onboarding short. Every extra question loses about 8% of sign-ups in our tests, so we don't ask about investment knowledge, experience or the ability to absorb losses.\n2. **Portfolio.** Users type in their holdings. Live prices come from public market data.\n3. **AI recommendations.** On demand, Wealthpilot produces three concrete recommendations, each naming a specific instrument (for example *\"Buy CW8.PA, 40% of new monthly contributions\"* or *\"Sell 30% of your Airbus position\"*), plus a target allocation and a risk warning. Recommendations are tailored to the user's profile and portfolio.\n4. **Dashboard.** Value, gains, a measured risk score compared with the user's stated tolerance, and market context.\n\nWhat we don't do: execute trades, hold client money or securities, or take commissions from product providers.\n\n## 4. Regulatory positioning\n\nWe position Wealthpilot as an **information and education service**. Every recommendation screen shows the notice *\"This is not financial advice.\"* This lets us launch without the cost and delay of registering as a *conseiller en investissements financiers* (CIF) with ORIAS and joining an AMF-approved association. That takes an estimated 3–4 months and €15–25k a year in compliance costs, including professional-liability insurance.\n\nWe'll revisit registration once we pass 50,000 users, or if a partner bank requires it.\n\nNo privacy notice or terms of service are published yet. Sign-up asks only for an email and a password, to keep conversion high. A privacy policy and terms will be written before the public launch.\n\n## 5. Business model\n\n| Plan | Price | Includes |\n|---|---|---|\n| Free | €0 | Portfolio tracking, risk score, 1 AI analysis per month |\n| Premium | €9.99 / month | Unlimited AI analyses, rebalancing suggestions, priority support |\n\nWe take no commissions and no payments from product providers. Target conversion from free to premium: 6% in year 1, 9% in year 2.\n\n## 6. Market and competition\n\n- **Target users:** French residents aged 25–45, investable assets of €5k–€100k, using PEA, assurance-vie or a compte-titres.\n- **Robo-advisers** (discretionary mandates) require transferring the money, and their fees are 0.75–1.5% a year. We keep the user's existing accounts.\n- **Portfolio trackers** show data but give no recommendations.\n- **Human CIFs** are personal but expensive, and they don't scale.\n\n## 7. Go-to-market\n\n1. Q4 2026: closed beta with 500 users from our waiting list.\n2. Q1 2027: public launch in France, with content partnerships with personal-finance creators.\n3. Q3 2027: referral programme, and a partnership with one neo-bank to embed recommendations.\n\n## 8. Operations and technology\n\n- **Team:** two co-founders (product and engineering) and one contract developer. We'll hire a compliance lead after the seed round.\n- **Stack:** Python/FastAPI backend, React frontend, PostgreSQL. AI analysis by Mistral AI (a French provider), with no email or account ID sent.\n- **Hosting:** runs locally today. Planned production on AWS Paris (`eu-west-3`), described in `docs/TECHNICAL_ARCHITECTURE.md`.\n- **Data:** users' profile answers, holdings and every generated analysis are kept in our database. We don't collect names, addresses or bank credentials.\n\n## 9. Financials (summary)\n\n| | 2027 | 2028 |\n|---|---|---|\n| Registered users (end of year) | 25,000 | 90,000 |\n| Paying users | 1,500 | 8,100 |\n| Revenue | €110k | €720k |\n| Operating costs | €640k | €1.1M |\n\n## 10. Key risks\n\n- **Regulatory:** the AMF could treat personalised recommendations on named instruments as investment advice that requires CIF status. *Mitigation:* the disclaimer on every screen. We'll seek a legal opinion after the seed round.\n- **AI quality:** recommendations may be wrong or unsuitable. *Mitigation:* prefer diversified ETFs; output schema validation.\n- **Market data:** we depend on a free, unofficial price source. *Mitigation:* move to a licensed feed before scaling.\n",
+      "files": [],
+      "sha256": "68b2aa5b6e0b1a1f50a4d06023992cc139a2a062093290f66d0b654cd11706c9"
+    }
+  ],
+  "assessment": {
+    "id": "asm-0.9.0",
+    "release_id": "rel-0.9.0",
+    "status": "completed",
+    "pack_version": "fintech-eu-fr@0.1.0",
+    "model": "codestral-latest",
+    "run_id": "run-0.9.0",
+    "started_at": "2026-10-04T09:00:00Z",
+    "finished_at": "2026-10-04T09:01:37Z"
+  },
+  "findings": [
+    {
+      "id": "f-0.9.0-W1",
+      "assessment_id": "asm-0.9.0",
+      "requirement_id": "FR-CIF-STATUS-01",
+      "conclusion": "potential_violation",
+      "severity": "blocker",
+      "title": "Wording says 'not financial advice' while the product gives personalised advice",
+      "reasoning_summary": "The disclaimer states 'This is not financial advice', but the system prompt tells the model to name tickers and give concrete percentages from each user's profile and holdings, and the business plan describes 'personalised buy, sell, hold and rebalance recommendations on named instruments'. That is a personal recommendation on financial instruments (MiFID II Art. 4(1)(4)), which in France requires CIF status registered with ORIAS (CMF L.541-1, L.546-1). No registration record exists, and the business plan chooses not to register.",
+      "evidence": [
+        {
+          "type": "code",
+          "artifact_id": "art-0.9.0-code",
+          "path": "backend/app/config.py",
+          "start_line": 10,
+          "end_line": 14,
+          "quote": "This is not financial advice."
+        },
+        {
+          "type": "code",
+          "artifact_id": "art-0.9.0-code",
+          "path": "backend/app/advisor.py",
+          "start_line": 17,
+          "end_line": 26,
+          "quote": "Be specific: name tickers (Yahoo Finance format, e.g. CW8.PA, MC.PA) and give concrete percentages."
+        },
+        {
+          "type": "document_span",
+          "artifact_id": "art-0.9.0-business-plan",
+          "quote": "personalised buy, sell, hold and rebalance recommendations on named instruments",
+          "start": 478,
+          "end": 557
+        },
+        {
+          "type": "document_span",
+          "artifact_id": "art-0.9.0-business-plan",
+          "quote": "This lets us launch without the cost and delay of registering as a *conseiller en investissements financiers* (CIF) with ORIAS",
+          "start": 2664,
+          "end": 2790
+        },
+        {
+          "type": "missing",
+          "artifact_kind": "regulatory_registration"
+        }
+      ],
+      "citations": [
+        "mifid2-art4-1-4",
+        "cmf-l541-1",
+        "cmf-l546-1"
+      ],
+      "confidence": {
+        "applicability": 0.97,
+        "evidence": 0.93,
+        "finding": 0.95
+      },
+      "attempts": 1,
+      "validation_notes": [],
+      "evidence_fingerprint": "283e313d83c07d062708d9cf5fc7b4649a2990c1b14dbbcec1023e3bfa222984",
+      "applicable_review": null,
+      "carried_from_version": null,
+      "effective_conclusion": "potential_violation"
+    },
+    {
+      "id": "f-0.9.0-W2",
+      "assessment_id": "asm-0.9.0",
+      "requirement_id": "FR-SUITABILITY-01",
+      "conclusion": "potential_violation",
+      "severity": "blocker",
+      "title": "Profile ignores knowledge, experience and ability to bear losses",
+      "reasoning_summary": "The risk profile holds six fields: age, income, goal, monthly amount, risk tolerance and horizon. Nothing captures the client's knowledge and experience of investments or the share of capital they can afford to lose, both required before personal recommendations (MiFID II Art. 25(2), Delegated Regulation 2017/565 Art. 54(2)). The business plan states the omission is deliberate to keep sign-up short. The advisor prompt does not check suitability.",
+      "evidence": [
+        {
+          "type": "code",
+          "artifact_id": "art-0.9.0-code",
+          "path": "backend/app/models.py",
+          "start_line": 29,
+          "end_line": 40,
+          "quote": "risk_tolerance: Mapped[int] = mapped_column(Integer)  # 1-5"
+        },
+        {
+          "type": "code",
+          "artifact_id": "art-0.9.0-code",
+          "path": "backend/app/schemas.py",
+          "start_line": 19,
+          "end_line": 25,
+          "quote": "horizon_years: int = Field(ge=1, le=50)"
+        },
+        {
+          "type": "code",
+          "artifact_id": "art-0.9.0-code",
+          "path": "frontend/src/pages/Onboarding.jsx",
+          "start_line": 26,
+          "end_line": 31,
+          "quote": "{ key: \"risk_tolerance\", title: \"How do you feel about risk?\""
+        },
+        {
+          "type": "document_span",
+          "artifact_id": "art-0.9.0-business-plan",
+          "quote": "we don't ask about investment knowledge, experience or the ability to absorb losses",
+          "start": 1741,
+          "end": 1824
+        }
+      ],
+      "citations": [
+        "mifid2-art25-2",
+        "delreg565-art54-2",
+        "delreg565-art54-5",
+        "esma-suitability-2023"
+      ],
+      "confidence": {
+        "applicability": 0.96,
+        "evidence": 0.92,
+        "finding": 0.95
+      },
+      "attempts": 2,
+      "validation_notes": [
+        "Retry 1: quote not found in backend/app/schemas.py; corrected."
+      ],
+      "evidence_fingerprint": "374fed677430c46da06c1f6b49278619e7a8dca5a0c7f2b8aa75f311d1616f9d",
+      "applicable_review": null,
+      "carried_from_version": null,
+      "effective_conclusion": "potential_violation"
+    },
+    {
+      "id": "f-0.9.0-W3",
+      "assessment_id": "asm-0.9.0",
+      "requirement_id": "GDPR-INFO-01",
+      "conclusion": "insufficient_evidence",
+      "severity": "high",
+      "title": "No privacy policy or notice found",
+      "reasoning_summary": "GDPR Art. 13 requires the controller to inform users, when collecting data, of its identity, the purposes and legal bases and the recipients. The bundle contains no privacy policy, and the product guide says sign-up has 'no terms of service, privacy notice or consent step'. The business plan says a policy will be written before launch. Absence of a document is not proof either way, so the conclusion is insufficient evidence.",
+      "evidence": [
+        {
+          "type": "missing",
+          "artifact_kind": "privacy_policy"
+        },
+        {
+          "type": "document_span",
+          "artifact_id": "art-0.9.0-PRODUCT_GUIDE",
+          "quote": "No terms of service, privacy notice or consent step.",
+          "start": 16225,
+          "end": 16277
+        },
+        {
+          "type": "document_span",
+          "artifact_id": "art-0.9.0-business-plan",
+          "quote": "No privacy notice or terms of service are published yet.",
+          "start": 3041,
+          "end": 3097
+        }
+      ],
+      "citations": [
+        "gdpr-art13"
+      ],
+      "confidence": {
+        "applicability": 0.98,
+        "evidence": 0.7,
+        "finding": 0.8
+      },
+      "attempts": 1,
+      "validation_notes": [],
+      "evidence_fingerprint": "4a3e024e6155c1887cef9fdf476ebce47f31f4f6c4bccb2400f6e30b0c15cee1",
+      "applicable_review": null,
+      "carried_from_version": null,
+      "effective_conclusion": "insufficient_evidence"
+    },
+    {
+      "id": "f-0.9.0-W4",
+      "assessment_id": "asm-0.9.0",
+      "requirement_id": "FR-SUITABILITY-UPDATE-01",
+      "conclusion": "potential_violation",
+      "severity": "high",
+      "title": "Advice stays visible after the client's profile changes",
+      "reasoning_summary": "The profile endpoint overwrites the record in place and the 'latest' endpoint returns the last analysis regardless of when the profile changed. A client who edits their profile keeps seeing recommendations generated for the old one with nothing marking them out of date, although the firm ought to know the information those recommendations rely on has changed (Delegated Regulation 2017/565 Art. 54(7)).",
+      "evidence": [
+        {
+          "type": "code",
+          "artifact_id": "art-0.9.0-code",
+          "path": "backend/app/routers/profile.py",
+          "start_line": 12,
+          "end_line": 20,
+          "quote": "setattr(user.profile, k, v)"
+        },
+        {
+          "type": "code",
+          "artifact_id": "art-0.9.0-code",
+          "path": "backend/app/routers/advice.py",
+          "start_line": 31,
+          "end_line": 38,
+          "quote": "@router.get(\"/recommendations/latest\", response_model=AnalysisOut | None)"
+        }
+      ],
+      "citations": [
+        "delreg565-art54-7"
+      ],
+      "confidence": {
+        "applicability": 0.9,
+        "evidence": 0.9,
+        "finding": 0.88
+      },
+      "attempts": 1,
+      "validation_notes": [],
+      "evidence_fingerprint": "564d57494af1927e53937c055a013541345392bfbfe954f94e5e743d7bb42829",
+      "applicable_review": null,
+      "carried_from_version": null,
+      "effective_conclusion": "potential_violation"
+    },
+    {
+      "id": "f-0.9.0-W5",
+      "assessment_id": "asm-0.9.0",
+      "requirement_id": "GDPR-ERASURE-01",
+      "conclusion": "potential_violation",
+      "severity": "high",
+      "title": "No way to erase an account; recommendations are not cascaded",
+      "reasoning_summary": "The auth router offers signup, login and me only; there is no deletion endpoint, and the product guide says deletion 'is not yet available in the app'. `Recommendation` has a plain foreign key to the user with no cascade, so even a manual user delete would leave analyses behind. GDPR Art. 17 gives users the right to erasure without undue delay.",
+      "evidence": [
+        {
+          "type": "code",
+          "artifact_id": "art-0.9.0-code",
+          "path": "backend/app/routers/auth.py",
+          "start_line": 32,
+          "end_line": 34,
+          "quote": "@router.get(\"/me\", response_model=Me)"
+        },
+        {
+          "type": "code",
+          "artifact_id": "art-0.9.0-code",
+          "path": "backend/app/models.py",
+          "start_line": 60,
+          "end_line": 62,
+          "quote": "user_id: Mapped[int] = mapped_column(ForeignKey(\"users.id\"), index=True)"
+        },
+        {
+          "type": "document_span",
+          "artifact_id": "art-0.9.0-PRODUCT_GUIDE",
+          "quote": "Account deletion is not yet available in the app.",
+          "start": 14832,
+          "end": 14881
+        }
+      ],
+      "citations": [
+        "gdpr-art17"
+      ],
+      "confidence": {
+        "applicability": 0.94,
+        "evidence": 0.92,
+        "finding": 0.93
+      },
+      "attempts": 1,
+      "validation_notes": [],
+      "evidence_fingerprint": "515740b5c92b4952dec6bf73376f026c8d4048772fedf56397d5abbf9a4c2cdd",
+      "applicable_review": null,
+      "carried_from_version": null,
+      "effective_conclusion": "potential_violation"
+    },
+    {
+      "id": "f-0.9.0-W6",
+      "assessment_id": "asm-0.9.0",
+      "requirement_id": "GDPR-SECURITY-01",
+      "conclusion": "potential_violation",
+      "severity": "high",
+      "title": "Session tokens signed with a public default secret",
+      "reasoning_summary": "`JWT_SECRET` falls back to the literal 'dev-secret-change-me' when the environment variable is unset, and the technical architecture document confirms this default. A deployment that forgets the variable signs sessions with a secret anyone can read in the repository, allowing forged tokens and access to other users' financial data (GDPR Art. 32).",
+      "evidence": [
+        {
+          "type": "code",
+          "artifact_id": "art-0.9.0-code",
+          "path": "backend/app/config.py",
+          "start_line": 4,
+          "end_line": 4,
+          "quote": "JWT_SECRET = os.getenv(\"JWT_SECRET\", \"dev-secret-change-me\")"
+        },
+        {
+          "type": "document_span",
+          "artifact_id": "art-0.9.0-TECHNICAL_ARCHITECTURE",
+          "quote": "| `JWT_SECRET` default | `dev-secret-change-me` when unset |",
+          "start": 5280,
+          "end": 5340
+        }
+      ],
+      "citations": [
+        "gdpr-art32"
+      ],
+      "confidence": {
+        "applicability": 0.96,
+        "evidence": 0.95,
+        "finding": 0.95
+      },
+      "attempts": 2,
+      "validation_notes": [
+        "Retry 1: citation 'gdpr-art5' is not in derived_from; corrected."
+      ],
+      "evidence_fingerprint": "b1b3bf9c2dd91c7783886cec85c539767f6f05659480971ff640506ad0085769",
+      "applicable_review": null,
+      "carried_from_version": null,
+      "effective_conclusion": "potential_violation"
+    },
+    {
+      "id": "f-0.9.0-W7",
+      "assessment_id": "asm-0.9.0",
+      "requirement_id": "FR-SUITABILITY-REPORT-01",
+      "conclusion": "potential_violation",
+      "severity": "medium",
+      "title": "Only the latest analysis is available to the client",
+      "reasoning_summary": "Every analysis is stored, but the API exposes only the most recent one. Clients cannot retrieve the earlier recommendations they were given, so the firm cannot show the suitability statements delivered (MiFID II Art. 25(6)).",
+      "evidence": [
+        {
+          "type": "code",
+          "artifact_id": "art-0.9.0-code",
+          "path": "backend/app/routers/advice.py",
+          "start_line": 31,
+          "end_line": 38,
+          "quote": "@router.get(\"/recommendations/latest\", response_model=AnalysisOut | None)"
+        }
+      ],
+      "citations": [
+        "mifid2-art25-6"
+      ],
+      "confidence": {
+        "applicability": 0.88,
+        "evidence": 0.9,
+        "finding": 0.86
+      },
+      "attempts": 1,
+      "validation_notes": [],
+      "evidence_fingerprint": "85ac917884ea3caabdd95018ff1f1ca272f9ddb064981e51a8cb316f3f2c7330",
+      "applicable_review": null,
+      "carried_from_version": null,
+      "effective_conclusion": "potential_violation"
+    },
+    {
+      "id": "f-0.9.0-W8",
+      "assessment_id": "asm-0.9.0",
+      "requirement_id": "AI-TRANSPARENCY-01",
+      "conclusion": "uncertain",
+      "severity": "medium",
+      "title": "AI labelling present; Art. 50 applicability unclear",
+      "reasoning_summary": "The Recommendations page states 'Generated by Mistral AI' and the guide says the page is labelled. There is no chatbot or synthetic media, so it is unclear whether Art. 50 transparency duties apply to personalised text shown to a single user, and whether the label satisfies a machine-readable marking duty. Counsel should decide.",
+      "evidence": [
+        {
+          "type": "code",
+          "artifact_id": "art-0.9.0-code",
+          "path": "frontend/src/pages/Recommendations.jsx",
+          "start_line": 17,
+          "end_line": 17,
+          "quote": "analysis.source === \"demo\" ? \"Demo mode"
+        },
+        {
+          "type": "document_span",
+          "artifact_id": "art-0.9.0-PRODUCT_GUIDE",
+          "quote": "The page says \"Generated by Mistral AI\" or \"Demo mode\".",
+          "start": 15984,
+          "end": 16039
+        }
+      ],
+      "citations": [
+        "aiact-art50"
+      ],
+      "confidence": {
+        "applicability": 0.55,
+        "evidence": 0.7,
+        "finding": 0.4
+      },
+      "attempts": 1,
+      "validation_notes": [],
+      "evidence_fingerprint": "53a217c5da302dd62d53f58fbb4972a79ec7ff858cd32084e79554988f0a36ad",
+      "applicable_review": null,
+      "carried_from_version": null,
+      "effective_conclusion": "uncertain"
+    },
+    {
+      "id": "f-0.9.0-C1",
+      "assessment_id": "asm-0.9.0",
+      "requirement_id": "FR-NO-EXECUTION-01",
+      "conclusion": "not_applicable",
+      "severity": "high",
+      "title": "Out of scope: no trade execution or client funds",
+      "reasoning_summary": "The regulatory profile declares no trade execution and no custody of client funds, so this control does not apply. No model call was made.",
+      "evidence": [],
+      "citations": [
+        "cmf-l541-1"
+      ],
+      "confidence": {
+        "applicability": 1.0,
+        "evidence": 1.0,
+        "finding": 1.0
+      },
+      "attempts": 0,
+      "validation_notes": [],
+      "evidence_fingerprint": "e367314e0070faeb5c3e9d9cba7e6fb004512a7349410b001ae77a5459bab938",
+      "applicable_review": null,
+      "carried_from_version": null,
+      "effective_conclusion": "not_applicable"
+    },
+    {
+      "id": "f-0.9.0-C2",
+      "assessment_id": "asm-0.9.0",
+      "requirement_id": "GDPR-PASSWORD-HASH-01",
+      "conclusion": "satisfied",
+      "severity": "medium",
+      "title": "Passwords are stored as bcrypt hashes",
+      "reasoning_summary": "Passwords are hashed with bcrypt and a per-password salt before storage; the architecture document confirms the default cost of 12 rounds. No readable password is stored.",
+      "evidence": [
+        {
+          "type": "code",
+          "artifact_id": "art-0.9.0-code",
+          "path": "backend/app/auth.py",
+          "start_line": 17,
+          "end_line": 17,
+          "quote": "bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()"
+        },
+        {
+          "type": "document_span",
+          "artifact_id": "art-0.9.0-TECHNICAL_ARCHITECTURE",
+          "quote": "| Password storage | bcrypt, default cost (12 rounds), per-password salt |",
+          "start": 4888,
+          "end": 4962
+        }
+      ],
+      "citations": [
+        "gdpr-art32"
+      ],
+      "confidence": {
+        "applicability": 0.97,
+        "evidence": 0.95,
+        "finding": 0.96
+      },
+      "attempts": 1,
+      "validation_notes": [],
+      "evidence_fingerprint": "e63b438b6f5981b2c42ec5d49b325d06f3a51f44024e18f531a1d1e9ff29d0b1",
+      "applicable_review": null,
+      "carried_from_version": null,
+      "effective_conclusion": "satisfied"
+    }
+  ],
+  "reviews": [],
+  "readiness": {
+    "release_id": "rel-0.9.0",
+    "assessment_id": "asm-0.9.0",
+    "version": "0.9.0",
+    "gate": "NOT_READY",
+    "gate_label": "Not ready",
+    "labels": [
+      "AI pre-assessment, not legal advice",
+      "counsel-reviewed 0/10"
+    ],
+    "counts": {
+      "blockers": 2,
+      "missing_evidence": 1,
+      "high": 3,
+      "medium": 1,
+      "low": 0,
+      "uncertain_unreviewed": 1,
+      "requirements_total": 10,
+      "requirements_evaluated": 9
+    },
+    "counsel_reviewed": {
+      "reviewed": 0,
+      "total": 10
+    },
+    "coverage": [
+      {
+        "domain": "licensing",
+        "total": 2,
+        "satisfied": 0,
+        "potential_violation": 1,
+        "insufficient_evidence": 0,
+        "uncertain": 0,
+        "not_applicable": 1
+      },
+      {
+        "domain": "suitability",
+        "total": 3,
+        "satisfied": 0,
+        "potential_violation": 3,
+        "insufficient_evidence": 0,
+        "uncertain": 0,
+        "not_applicable": 0
+      },
+      {
+        "domain": "data_protection",
+        "total": 4,
+        "satisfied": 1,
+        "potential_violation": 2,
+        "insufficient_evidence": 1,
+        "uncertain": 0,
+        "not_applicable": 0
+      },
+      {
+        "domain": "ai_transparency",
+        "total": 1,
+        "satisfied": 0,
+        "potential_violation": 0,
+        "insufficient_evidence": 0,
+        "uncertain": 1,
+        "not_applicable": 0
+      }
+    ],
+    "previous_release_id": null,
+    "changes_since_previous": {
+      "resolved": [],
+      "new": [],
+      "unchanged": []
+    },
+    "blockers": [
+      "FR-CIF-STATUS-01",
+      "FR-SUITABILITY-01",
+      "GDPR-INFO-01"
+    ]
+  }
+}
