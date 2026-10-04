@@ -3,12 +3,12 @@ id: T21
 title: Dockerize CCOmmit — API + web in compose, make up
 kind: work                  # work | verify | gate
 deps: [T16, T17]
-owns: [backend/Dockerfile, backend/.dockerignore, frontend/Dockerfile, frontend/.dockerignore, frontend/nginx.conf, docker-compose.yml, Makefile, docs/run.md]                # work only: paths or globs this task may edit
+owns: [backend/Dockerfile, backend/.dockerignore, backend/Dockerfile.dockerignore, frontend/Dockerfile, frontend/.dockerignore, frontend/Dockerfile.dockerignore, frontend/nginx.conf, docker-compose.yml, Makefile, docs/run.md]                # work only: paths or globs this task may edit
 repo: .
 needs: [docker]              # preflight needs, e.g. env:OPENAI_API_KEY, kube:staging/ns, registry:host
 verify: "docker compose -p sdd-cco-mvp config -q"
 review: none                # none (merge on verify alone) | light (one review; only bugs in own files block)
-status: todo                   # todo | doing | review | done | blocked | skipped
+status: done                   # todo | doing | review | done | blocked | skipped
 ---
 
 # T21 — Dockerize CCOmmit — API + web in compose, make up
