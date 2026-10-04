@@ -1,0 +1,67 @@
+# Postgres + pgvector for CCOmmit. Host port 20002 (8000/5173/5432 belong to other projects).
+# Start with: make db-up   (compose project name: sdd-cco-mvp)
+name: sdd-cco-mvp
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: cco
+      POSTGRES_PASSWORD: cco
+      POSTGRES_DB: cco
+    labels: &labels
+      sdd.slug: cco-mvp
+    ports:
+      - "127.0.0.1:20002:5432"
+    volumes:
+      - cco-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cco -d cco"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      labels: *labels
+    image: sdd-cco-mvp-api
+    labels: *labels
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CCO_DATABASE_URL: postgresql+psycopg://cco:cco@db:5432/cco
+      CCO_DEPLOY_TOKEN: ${CCO_DEPLOY_TOKEN:-dev-token}
+      CCO_DEMO: "1"
+      CCO_DEMO_DIR: /app/demo
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:20000:20000"
+    volumes:
+      - cco-runtime:/app/data/runtime
+      - ./demo:/app/demo:ro
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      labels: *labels
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://127.0.0.1:20000}
+    image: sdd-cco-mvp-web
+    labels: *labels
+    depends_on:
+      - api
+    ports:
+      - "127.0.0.1:20001:20001"
+
+volumes:
+  cco-pgdata:
+    labels: *labels
+  cco-runtime:
+    labels: *labels

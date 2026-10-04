@@ -1,0 +1,244 @@
+# Log — cco-mvp
+
+- 2026-10-04 13:58 · spec · folder created (base: main, size: full)
+- 2026-10-04 14:00 · preflight · basic: all ok
+- 2026-10-04 14:00 · spec · started; branch ft/cco-mvp off main; preflight basic ok
+- 2026-10-04 14:00 · run · pushed ft/cco-mvp
+- 2026-10-04 14:01 · spec · framed (§1-3 from outline); grounded @ 05897a0, FinTechProto @ ae1c4e5
+- 2026-10-04 14:01 · run · pushed ft/cco-mvp
+- 2026-10-04 14:10 · critique · 01-spec: ACCEPT_WITH_CHANGES, 4 blocker / 11 major / 6 minor, all accepted (T6 keep toggle, T7 keep embeddings)
+- 2026-10-04 14:10 · spec · rev 2 applied critique 01; decisions D1-D18 decided
+- 2026-10-04 14:11 · run · pushed ft/cco-mvp
+- 2026-10-04 14:19 · spec · rev 3: CCOmmit name; local hosting, CI on GH runners; no sign-off gate; guidance sources; FinTechProto regrounded @ dbb8e64
+- 2026-10-04 14:19 · run · pushed ft/cco-mvp
+- 2026-10-04 14:19 · run · pushed ft/cco-mvp
+- 2026-10-04 14:26 · spec · CMF L541-1/L546-1 captured from Légifrance PDFs; FinTechProto moved to RomanGrebnev (admin)
+- 2026-10-04 14:26 · run · pushed ft/cco-mvp
+- 2026-10-04 14:33 · approved · spec → approved — signed off by Roman Grebnev (start /roman-plan), fast mode: wave-end checks
+- 2026-10-04 14:33 · spec · approved; FinTechProto compliance docs drafted on its ft/cco-mvp (81bbbbe v0.9.0, dbd5d3c v1.0.0)
+- 2026-10-04 14:33 · run · pushed ft/cco-mvp
+- 2026-10-04 14:46 · preflight · full: git-clean=warn, env:MISTRAL_API_KEY=missing
+- 2026-10-04 14:46 · preflight · full: env:MISTRAL_API_KEY=missing
+- 2026-10-04 14:46 · preflight · full: git-clean=warn
+- 2026-10-04 14:46 · run · pushed ft/cco-mvp
+- 2026-10-04 14:47 · planned · spec → planned — go from Roman Grebnev — auto mode, push all, fast checks (V2 + VA)
+- 2026-10-04 14:47 · run · pushed ft/cco-mvp
+- 2026-10-04 14:48 · preflight · full: git-clean=warn
+- 2026-10-04 14:48 · executing · spec → executing
+- 2026-10-04 14:48 · run · T01 worktree on ft/cco-mvp-t01
+- 2026-10-04 14:48 · run · T07 worktree on ft/cco-mvp-t07
+- 2026-10-04 14:48 · run · T01 → doing
+- 2026-10-04 14:48 · run · T07 → doing
+- 2026-10-04 14:52 · verify · G1 verify exit 0 (0s)
+- 2026-10-04 14:52 · run · G1 → done — v0.9.0 = 7bf6004, run by orchestrator at Roman's request
+- 2026-10-04 14:52 · verify · T07 verify exit 0 (6s)
+- 2026-10-04 14:52 · run · pushed ft/cco-mvp-t07
+- 2026-10-04 14:52 · run · T07 merged into ft/cco-mvp
+- 2026-10-04 14:52 · run · T07 → done — merged; demo/rc=cdf9a0f; 11 tests
+- 2026-10-04 14:53 · run · pushed ft/cco-mvp
+- 2026-10-04 14:53 · run · T13 worktree on ft/cco-mvp-t13
+- 2026-10-04 14:53 · run · T13 → doing
+- 2026-10-04 14:55 · verify · T13 verify exit 0 (9s)
+- 2026-10-04 14:55 · run · pushed ft/cco-mvp-t13
+- 2026-10-04 14:55 · run · T13 merged into ft/cco-mvp
+- 2026-10-04 14:55 · run · T13 → done — merged; demo/v1=0042de0; 30 tests; conftest deviation accepted
+- 2026-10-04 14:55 · run · pushed ft/cco-mvp
+- 2026-10-04 14:58 · verify · T01 verify exit 0 (0s)
+- 2026-10-04 14:58 · run · pushed ft/cco-mvp-t01
+- 2026-10-04 14:58 · run · T01 merged into ft/cco-mvp
+- 2026-10-04 14:58 · run · T01 → done — merged; contracts frozen
+- 2026-10-04 14:58 · run · pushed ft/cco-mvp
+- 2026-10-04 14:58 · preflight · full: git-clean=warn
+- 2026-10-04 14:58 · run · T02 worktree on ft/cco-mvp-t02
+- 2026-10-04 14:58 · run · T02 → doing
+- 2026-10-04 14:58 · run · T03 worktree on ft/cco-mvp-t03
+- 2026-10-04 14:58 · run · T03 → doing
+- 2026-10-04 14:58 · run · T04 worktree on ft/cco-mvp-t04
+- 2026-10-04 14:58 · run · T04 → doing
+- 2026-10-04 14:58 · run · T05 worktree on ft/cco-mvp-t05
+- 2026-10-04 14:58 · run · T05 → doing
+- 2026-10-04 14:58 · run · T06 worktree on ft/cco-mvp-t06
+- 2026-10-04 14:58 · run · T06 → doing
+- 2026-10-04 15:02 · verify · T05 verify exit 0 (0s)
+- 2026-10-04 15:02 · run · pushed ft/cco-mvp-t05
+- 2026-10-04 15:02 · run · T05 merged into ft/cco-mvp
+- 2026-10-04 15:02 · run · T05 → done — merged
+- 2026-10-04 15:03 · verify · T03 verify exit 0 (1s)
+- 2026-10-04 15:03 · run · pushed ft/cco-mvp-t03
+- 2026-10-04 15:03 · run · T03 merged into ft/cco-mvp
+- 2026-10-04 15:03 · run · T03 → done — merged
+- 2026-10-04 15:03 · run · T11 worktree on ft/cco-mvp-t11
+- 2026-10-04 15:03 · run · T11 → doing
+- 2026-10-04 15:03 · run · T12 worktree on ft/cco-mvp-t12
+- 2026-10-04 15:03 · run · T12 → doing
+- 2026-10-04 15:04 · verify · T04 verify exit 0 (1s)
+- 2026-10-04 15:04 · run · pushed ft/cco-mvp-t04
+- 2026-10-04 15:04 · run · T04 merged into ft/cco-mvp
+- 2026-10-04 15:04 · run · T04 → done — merged
+- 2026-10-04 15:06 · verify · T02 verify exit 0 (2s)
+- 2026-10-04 15:06 · run · pushed ft/cco-mvp-t02
+- 2026-10-04 15:06 · run · T02 merged into ft/cco-mvp
+- 2026-10-04 15:06 · run · T02 → done — merged
+- 2026-10-04 15:06 · run · T08 worktree on ft/cco-mvp-t08
+- 2026-10-04 15:06 · run · T08 → doing
+- 2026-10-04 15:06 · run · T09 worktree on ft/cco-mvp-t09
+- 2026-10-04 15:06 · run · T09 → doing
+- 2026-10-04 15:06 · verify · T06 verify exit 0 (1s)
+- 2026-10-04 15:06 · run · pushed ft/cco-mvp-t06
+- 2026-10-04 15:06 · run · T06 merged into ft/cco-mvp
+- 2026-10-04 15:06 · run · T06 → done — merged; live spike 3/3 x3
+- 2026-10-04 15:06 · run · T10 worktree on ft/cco-mvp-t10
+- 2026-10-04 15:06 · run · T10 → doing
+- 2026-10-04 15:06 · run · T08 → doing
+- 2026-10-04 15:06 · run · T09 → doing
+- 2026-10-04 15:06 · run · pushed ft/cco-mvp
+- 2026-10-04 15:06 · verify · T12 verify exit 0 (1s)
+- 2026-10-04 15:06 · run · pushed ft/cco-mvp-t12
+- 2026-10-04 15:06 · run · T12 merged into ft/cco-mvp
+- 2026-10-04 15:06 · run · T12 → done — merged
+- 2026-10-04 15:08 · verify · T11 verify exit 0 (1s)
+- 2026-10-04 15:08 · run · pushed ft/cco-mvp-t11
+- 2026-10-04 15:08 · run · T11 merged into ft/cco-mvp
+- 2026-10-04 15:08 · run · T11 → done — merged
+- 2026-10-04 15:10 · verify · T09 verify exit 0 (1s)
+- 2026-10-04 15:11 · run · pushed ft/cco-mvp-t09
+- 2026-10-04 15:11 · run · T09 merged into ft/cco-mvp
+- 2026-10-04 15:11 · run · T09 → done — merged
+- 2026-10-04 15:13 · verify · T10 verify exit 0 (2s)
+- 2026-10-04 15:13 · run · pushed ft/cco-mvp-t10
+- 2026-10-04 15:13 · run · T10 merged into ft/cco-mvp
+- 2026-10-04 15:13 · run · T10 → done — merged; live smoke 7/10 match → T20
+- 2026-10-04 15:13 · run · pushed ft/cco-mvp
+- 2026-10-04 15:13 · run · T14 worktree on ft/cco-mvp-t14
+- 2026-10-04 15:13 · run · T14 → doing
+- 2026-10-04 15:13 · run · T15 worktree on ft/cco-mvp-t15
+- 2026-10-04 15:13 · run · T15 → doing
+- 2026-10-04 15:13 · run · T20 worktree on ft/cco-mvp-t20
+- 2026-10-04 15:13 · run · T20 → doing
+- 2026-10-04 15:14 · verify · T08 verify exit 0 (1s)
+- 2026-10-04 15:14 · run · pushed ft/cco-mvp-t08
+- 2026-10-04 15:14 · run · T08 merged into ft/cco-mvp
+- 2026-10-04 15:14 · run · T08 → done — merged
+- 2026-10-04 15:14 · run · T17 worktree on ft/cco-mvp-t17
+- 2026-10-04 15:14 · run · T17 → doing
+- 2026-10-04 15:15 · verify · T14 verify exit 0 (1s)
+- 2026-10-04 15:15 · run · pushed ft/cco-mvp-t14
+- 2026-10-04 15:15 · run · T14 merged into ft/cco-mvp
+- 2026-10-04 15:15 · run · T14 → done — merged
+- 2026-10-04 15:15 · run · T16 worktree on ft/cco-mvp-t16
+- 2026-10-04 15:15 · run · T16 → doing
+- 2026-10-04 15:17 · verify · T15 verify exit 0 (2s)
+- 2026-10-04 15:17 · run · pushed ft/cco-mvp-t15
+- 2026-10-04 15:17 · run · T15 merged into ft/cco-mvp
+- 2026-10-04 15:17 · run · T15 → done — merged
+- 2026-10-04 15:19 · verify · T16 verify exit 0 (2s)
+- 2026-10-04 15:19 · run · pushed ft/cco-mvp-t16
+- 2026-10-04 15:19 · run · T16 merged into ft/cco-mvp
+- 2026-10-04 15:20 · verify · T16 verify exit 0 (2s)
+- 2026-10-04 15:20 · run · T16 → done — merged + exit-2 fix
+- 2026-10-04 15:20 · verify · T17 verify exit 0 (1s)
+- 2026-10-04 15:20 · run · pushed ft/cco-mvp-t17
+- 2026-10-04 15:20 · run · T17 merged into ft/cco-mvp
+- 2026-10-04 15:20 · run · T17 → done — merged
+- 2026-10-04 15:20 · run · pushed ft/cco-mvp
+- 2026-10-04 15:20 · run · T18 worktree on ft/cco-mvp-t18
+- 2026-10-04 15:20 · run · T18 → doing
+- 2026-10-04 15:23 · run · pushed ft/cco-mvp
+- 2026-10-04 15:23 · run · T21 worktree on ft/cco-mvp-t21
+- 2026-10-04 15:23 · run · T21 → doing
+- 2026-10-04 15:25 · verify · T21 verify exit 0 (0s)
+- 2026-10-04 15:25 · run · pushed ft/cco-mvp-t21
+- 2026-10-04 15:25 · run · T21 merged into ft/cco-mvp
+- 2026-10-04 15:25 · run · T21 → done — merged; make up smoke ok
+- 2026-10-04 15:25 · run · pushed ft/cco-mvp
+- 2026-10-04 15:27 · verify · T18 verify exit 0 (0s)
+- 2026-10-04 15:27 · run · pushed ft/cco-mvp-t18
+- 2026-10-04 15:27 · run · T18 merged into ft/cco-mvp
+- 2026-10-04 15:27 · run · T18 → done — merged; push2 dry run red → T22/T23
+- 2026-10-04 15:28 · run · pushed ft/cco-mvp
+- 2026-10-04 15:28 · run · T22 worktree on ft/cco-mvp-t22
+- 2026-10-04 15:28 · run · T22 → doing
+- 2026-10-04 15:28 · run · T23 worktree on ft/cco-mvp-t23
+- 2026-10-04 15:28 · run · T23 → doing
+- 2026-10-04 15:29 · verify · T22 verify exit 0 (0s)
+- 2026-10-04 15:29 · run · pushed ft/cco-mvp-t22
+- 2026-10-04 15:29 · run · T22 merged into ft/cco-mvp
+- 2026-10-04 15:29 · run · T22 → done — merged; refs pushed; bundles rebuilt
+- 2026-10-04 15:29 · run · pushed ft/cco-mvp
+- 2026-10-04 15:30 · verify · T23 verify exit 0 (3s)
+- 2026-10-04 15:30 · run · pushed ft/cco-mvp-t23
+- 2026-10-04 15:30 · run · T23 merged into ft/cco-mvp
+- 2026-10-04 15:30 · run · T23 → done — merged
+- 2026-10-04 15:30 · run · pushed ft/cco-mvp
+- 2026-10-04 15:33 · run · pushed ft/cco-mvp
+- 2026-10-04 15:33 · run · T24 worktree on ft/cco-mvp-t24
+- 2026-10-04 15:33 · run · T24 → doing
+- 2026-10-04 15:33 · run · pushed ft/cco-mvp
+- 2026-10-04 15:34 · verify · T20 verify exit 0 (1s)
+- 2026-10-04 15:34 · run · pushed ft/cco-mvp-t20
+- 2026-10-04 15:34 · run · T20 merged into ft/cco-mvp
+- 2026-10-04 15:34 · run · T20 → done — merged; live check 9-10/10
+- 2026-10-04 15:34 · run · pushed ft/cco-mvp
+- 2026-10-04 15:34 · run · V2 → doing
+- 2026-10-04 15:39 · verify · T24 verify exit 0 (1s)
+- 2026-10-04 15:39 · run · pushed ft/cco-mvp-t24
+- 2026-10-04 15:39 · run · T24 merged into ft/cco-mvp
+- 2026-10-04 15:39 · run · T24 → done — merged
+- 2026-10-04 15:43 · run · pushed ft/cco-mvp
+- 2026-10-04 15:43 · run · T25 worktree on ft/cco-mvp-t25
+- 2026-10-04 15:43 · run · T25 → doing
+- 2026-10-04 15:48 · run · V2 → done — live v0.9.0 ok; e2e 9/9; v1.0.0 false positives → T25
+- 2026-10-04 15:48 · run · pushed ft/cco-mvp
+- 2026-10-04 16:11 · verify · T25 verify exit 0 (1s)
+- 2026-10-04 16:11 · run · pushed ft/cco-mvp-t25
+- 2026-10-04 16:11 · run · T25 merged into ft/cco-mvp
+- 2026-10-04 16:11 · run · T25 → done — merged; v1.0.0 10/10 x4, v0.9.0 9/10 x2
+- 2026-10-04 16:12 · run · pushed ft/cco-mvp
+- 2026-10-04 16:29 · run · G2 → done — adjust: UI redesign phase (see gate file §7)
+- 2026-10-04 16:30 · run · pushed ft/cco-mvp
+- 2026-10-04 16:39 · run · T19 → skipped — replaced by the UI redesign tasks T27, T29–T33 (G2 adjust)
+- 2026-10-04 16:39 · run · T26 worktree on ft/cco-mvp-t26
+- 2026-10-04 16:39 · run · T26 → doing
+- 2026-10-04 16:39 · run · T28 worktree on ft/cco-mvp-t28
+- 2026-10-04 16:39 · run · T28 → doing
+- 2026-10-04 16:41 · run · pushed ft/cco-mvp
+- 2026-10-04 16:41 · run · T27 worktree on ft/cco-mvp-t27
+- 2026-10-04 16:41 · run · T27 → doing
+- 2026-10-04 16:45 · verify · T28 verify exit 0 (2s)
+- 2026-10-04 16:45 · run · pushed ft/cco-mvp-t28
+- 2026-10-04 16:45 · run · T28 merged into ft/cco-mvp
+- 2026-10-04 16:45 · run · T28 → done — merged; review on PR #1 posted (0 inline: refs outside diff)
+- 2026-10-04 16:47 · verify · T26 verify exit 0 (1s)
+- 2026-10-04 16:47 · run · pushed ft/cco-mvp-t26
+- 2026-10-04 16:47 · run · T26 merged into ft/cco-mvp
+- 2026-10-04 16:47 · run · T26 → done — merged; snapshot 10/10 x3 first attempt; demo endpoints
+- 2026-10-04 16:48 · run · pushed ft/cco-mvp
+- 2026-10-04 16:48 · run · T36 worktree on ft/cco-mvp-t36
+- 2026-10-04 16:48 · run · T36 → doing
+- 2026-10-04 16:55 · run · T29 → skipped — compressed into T37/T38 (founder: 3 tasks)
+- 2026-10-04 16:55 · run · T30 → skipped — compressed into T37/T38 (founder: 3 tasks)
+- 2026-10-04 16:55 · run · T31 → skipped — compressed into T37/T38 (founder: 3 tasks)
+- 2026-10-04 16:55 · run · T32 → skipped — compressed into T37/T38 (founder: 3 tasks)
+- 2026-10-04 16:55 · run · T35 → skipped — compressed into T37/T38 (founder: 3 tasks)
+- 2026-10-04 16:55 · run · T33 → skipped — compressed into T37/T38 (founder: 3 tasks)
+- 2026-10-04 16:55 · run · pushed ft/cco-mvp
+- 2026-10-04 16:56 · run · pushed ft/cco-mvp-t36
+- 2026-10-04 16:56 · verify · T36 verify exit 0 (2s)
+- 2026-10-04 16:56 · run · T36 merged into ft/cco-mvp
+- 2026-10-04 16:56 · run · T36 → done — merged; W1/W2 cite code 4/4 live runs, 10/10
+- 2026-10-04 16:56 · verify · T27 verify exit 0 (16s)
+- 2026-10-04 16:56 · run · pushed ft/cco-mvp-t27
+- 2026-10-04 16:56 · run · T27 merge conflict: frontend/src/app/Header.tsx
+- 2026-10-04 16:57 · run · T27 → done — merged (Header.tsx conflict → T27 TopBar; Start demo moves to T38)
+- 2026-10-04 16:57 · run · T37 worktree on ft/cco-mvp-t37
+- 2026-10-04 16:57 · run · T37 → doing
+- 2026-10-04 16:57 · run · T38 worktree on ft/cco-mvp-t38
+- 2026-10-04 16:57 · run · T38 → doing
+- 2026-10-04 17:11 · verify · T37 verify exit 0 (10s)
+- 2026-10-04 17:11 · run · pushed ft/cco-mvp-t37
+- 2026-10-04 17:11 · run · T37 merged into ft/cco-mvp
+- 2026-10-04 17:11 · run · T37 → done — merged
+- 2026-10-04 17:12 · verify · T38 verify exit 0 (9s)
+- 2026-10-04 17:12 · run · pushed ft/cco-mvp-t38
+- 2026-10-04 17:12 · run · T38 merged into ft/cco-mvp
+- 2026-10-04 17:12 · run · T38 → done — merged

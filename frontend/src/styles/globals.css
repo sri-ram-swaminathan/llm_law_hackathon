@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #fafafb; --surface: #ffffff; --surface-2: #f4f5f7; --border: #e4e6eb;
+  --text: #14151a; --text-2: #5b5f6b; --text-3: #8a8e9a;
+  --accent: #4f46e5; --accent-soft: #eef0ff;
+  --blocker-fg: #c2253a; --blocker-bg: #fdecef; --blocker-bd: #f6c6ce;
+  --high-fg: #c2570c; --high-bg: #fef1e6; --high-bd: #f8d3b3;
+  --medium-fg: #a16207; --medium-bg: #fef7dc; --medium-bd: #f1e0a1;
+  --evidence-fg: #1d5fd1; --evidence-bg: #e9f1fd; --evidence-bd: #bcd4f7;
+  --uncertain-fg: #7c4dcc; --uncertain-bg: #f2ecfc; --uncertain-bd: #d9c9f2;
+  --satisfied-fg: #117a4b; --satisfied-bg: #e6f6ee; --satisfied-bd: #b3e1c9;
+  --na-fg: #6b7080; --na-bg: #eff0f3; --na-bd: #dcdee4;
+  --counsel-fg: #0f766e; --counsel-bg: #e6f5f3; --counsel-bd: #b5e0da;
+  --law-font: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --shadow-overlay: 0 8px 24px rgba(16, 18, 27, 0.12);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 120ms; --dur-base: 200ms; --dur-slow: 320ms;
+  color-scheme: light;
+}
+/* Dark: explicit choice, or the system preference unless the user picked Light. Keep both blocks identical. */
+:root[data-theme="dark"] {
+  --bg: #0b0c0f; --surface: #121318; --surface-2: #1a1c23; --border: #262932;
+  --text: #ecedf1; --text-2: #a1a5b1; --text-3: #6f7380;
+  --accent: #818cf8; --accent-soft: #1e2140;
+  --blocker-fg: #f27085; --blocker-bg: #2a1318; --blocker-bd: #4a2029;
+  --high-fg: #f59a57; --high-bg: #2a1b0f; --high-bd: #4a3019;
+  --medium-fg: #e3b341; --medium-bg: #262010; --medium-bd: #443a18;
+  --evidence-fg: #6ea8fe; --evidence-bg: #111e33; --evidence-bd: #1e3556;
+  --uncertain-fg: #b79cf2; --uncertain-bg: #1d1530; --uncertain-bd: #36285a;
+  --satisfied-fg: #4cc38a; --satisfied-bg: #0e2219; --satisfied-bd: #1a4a33;
+  --na-fg: #9096a6; --na-bg: #1b1d24; --na-bd: #2c2f39;
+  --counsel-fg: #2dd4bf; --counsel-bg: #0d2421; --counsel-bd: #1a4a43;
+  --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b0c0f; --surface: #121318; --surface-2: #1a1c23; --border: #262932;
+    --text: #ecedf1; --text-2: #a1a5b1; --text-3: #6f7380;
+    --accent: #818cf8; --accent-soft: #1e2140;
+    --blocker-fg: #f27085; --blocker-bg: #2a1318; --blocker-bd: #4a2029;
+    --high-fg: #f59a57; --high-bg: #2a1b0f; --high-bd: #4a3019;
+    --medium-fg: #e3b341; --medium-bg: #262010; --medium-bd: #443a18;
+    --evidence-fg: #6ea8fe; --evidence-bg: #111e33; --evidence-bd: #1e3556;
+    --uncertain-fg: #b79cf2; --uncertain-bg: #1d1530; --uncertain-bd: #36285a;
+    --satisfied-fg: #4cc38a; --satisfied-bg: #0e2219; --satisfied-bd: #1a4a33;
+    --na-fg: #9096a6; --na-bg: #1b1d24; --na-bd: #2c2f39;
+    --counsel-fg: #2dd4bf; --counsel-bg: #0d2421; --counsel-bd: #1a4a43;
+    --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss01", "cv11";
+}
+* { border-color: var(--border); }
+.tnum { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+::selection { background: var(--accent-soft); }
+.bg-grid {
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+}
+
+/* Law text reads in serif; company text stays in sans (DESIGN §5). */
+.font-law { font-family: var(--law-font); }
+
+/* Counsel mode frame: a 2px teal rule across the top of the viewport. */
+body[data-mode="counsel"]::before {
+  content: ""; position: fixed; inset: 0 0 auto 0; height: 2px; z-index: 60;
+  background: var(--counsel-fg); pointer-events: none;
+}
+
+/* Horizontal scrollers (mobile tabs) without a visible scrollbar. */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

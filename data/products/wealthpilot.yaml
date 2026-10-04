@@ -1,0 +1,44 @@
+# Evidence config and regulatory profile for Wealthpilot (SPEC 6.6, 6.12).
+# Lives in CCOmmit's own repo, never taken from an upload or a PR.
+product_id: wealthpilot
+name: Wealthpilot
+description: >-
+  French startup giving retail investors AI-generated, personalised portfolio recommendations
+  (Mistral) from a risk questionnaire and holdings entered by hand. No trade execution. Pre-launch in France.
+
+# Code files read by the evaluator tools (grep_code, read_file). Paths are relative to the bundle root.
+code_globs:
+  - backend/app/**/*.py
+  - frontend/src/**/*.jsx
+  - frontend/src/**/*.js
+  - docker-compose.yml
+  - .env.example
+  - README.md
+exclude_globs:
+  - "**/node_modules/**"
+  - "**/.git/**"
+  - "**/*.lock"
+  - "**/package-lock.json"
+  - "**/.env"
+  - "**/.env.*"
+  - "**/*.pem"
+  - "**/*.key"
+
+# Documents are the compliance/*.md files plus the two product docs that ship in the repo.
+documents:
+  - {kind: business_plan, path: compliance/business-plan.md}
+  - {kind: product_spec, path: docs/PRODUCT_GUIDE.md}
+  - {kind: product_spec, path: docs/TECHNICAL_ARCHITECTURE.md}
+  - {kind: privacy_policy, path: compliance/privacy-policy.md}
+  - {kind: terms, path: compliance/terms.md}
+  - {kind: regulatory_registration, path: compliance/cif-registration.md}
+
+# Regulatory profile seeded for the one confirm form (SPEC 6.7 journey A).
+profile:
+  jurisdictions: [EU, FR]
+  industry: fintech
+  activities: [investment_advice, portfolio_tracking]
+  customer_types: [retail]
+  data_categories: [identity_contact, financial_profile, holdings, analysis_history, technical_logs]
+  ai_uses: [personalised_recommendations]
+  stage: pre_launch

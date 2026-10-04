@@ -1,0 +1,47 @@
+# T27 foundation seams (use these and don't re-invent them)
+
+- **Routes** `lib/routes.ts`:
+  - constants: `ORG {name:'Wealthpilot SAS'}`, `DEFAULT_PRODUCT_ID='wealthpilot'`, `RELEASE_TABS`;
+  - `paths.{home,product,profile,release(pid,v,tab?),summary,risks(pid,v,fid?),documents(pid,v,aid?,{f}),code(pid,v,{path,f}),fixPlan,activity(pid,v,{run}),review(pid,v,fid?)}`;
+  - helpers: `legacyToNew()`, `versionFromReleaseId` / `releaseIdFromVersion`, `bareVersion`, `useReleaseParams()`.
+  - Every link goes through `paths.*`.
+- **Status** `lib/status.ts`: `chipLabel(c,s)` gives "Violation · Blocker". Also `statusWord`, `findingChipLabel`, `findingStatus`, `isOpen`, `compareFindings`, `effectiveConclusion(ai,decision,override)`, `GATE_STYLE/GATE_WORD`, `AI_LABEL`, `counselReviewedLabel`.
+- **Categories** `lib/categories.ts`: `CATEGORIES` (icon, label, order), `categoryOf(domain)`, `groupByCategory(findings, reqIndex, {keepEmpty})`.
+- **Other lib helpers:**
+  - `lib/semver.ts`;
+  - `lib/format.ts` (`fmtDateTime`, `fmtSeconds`, `fmtRelative`, `plural`, …);
+  - `lib/provenance.ts`: `provenance(release, runSummary?, opts)`.
+- **Mode** `lib/mode.ts`: `useMode`, `setMode`, `toggleMode`. It sets `body[data-mode]` and mirrors to `?mode=counsel`. Esc-to-exit is not wired yet (the counsel task calls `setMode('founder')`). Theme: `lib/theme.ts`.
+- **Queries** `lib/queries.ts`:
+  - `useProduct`, `useReleasesSorted`, `useReleaseByVersion(v)` → `{release, releaseId, notFound}`, `useCurrentRelease()`, `useReadiness`, `useFindings`, `useFinding(fid)`, `useProvisions(ids)`, `useRequirements`;
+  - `useRuns`, `useRunSummary(runId, pollMs)`;
+  - `useDemo`, `useStartDemo`, `useResetDemo`, `useStartAssessment`, `useCreateReview({findingId, body})`, `useRevokeReview`;
+  - `invalidateAssessmentData(qc)`, `reqIndex`, `aliasOf`.
+- **Client** `api/client.ts`: `api.*`, each call with a fixture fallback, including `demo`, `demoStart` and `demoReset`. Also `describeError(e)`, and the types in `api/extra.ts`.
+- **Slots** `lib/slots.ts`, typed:
+  - `check.actions` and `annotation.actions` take `{findingId, releaseId}`;
+  - `release.banner` and `release.runStrip`;
+  - `home.demo {productId}`;
+  - `summary.liveOverlay {releaseId, runId}`.
+
+  Register from `features/<x>/index.ts(x)` with `export function register()`. These files are auto-discovered, so `app/` never needs editing.
+- **Components:**
+  - `status-chip` (StatusChip v2, StatusDot);
+  - `tags` (GateChip, SeverityTag, CategoryIcon, LawBadge, Kbd);
+  - `feedback` (Banner, ErrorBanner, EmptyState, NotFound);
+  - `provenance` (ProvenanceLine, ValueLine);
+  - `sheet`;
+  - `button`, `card`, `tooltip`, `popover-menu`, `animated-number`.
+- **Shell:**
+  - `app/ReleaseLayout.tsx`: the release header (version, gate, provenance, Re-run), the tabs, the `release.banner` and `release.runStrip` slots, then the Outlet;
+  - `app/TopBar.tsx`: breadcrumb, version popover, mode switch, theme;
+  - `app/legacy.tsx`: the legacy redirects plus a temporary `LegacyReleasePage` bridge.
+- **Stubs:** `features/{workspace,product,profile,summary,risks,check,documents,code,fixplan,activity,review}/page.tsx`, each a default export. Replace yours; `App.tsx` imports only these.
+- **Fixtures:**
+  - the server runs on :20011 (`reuseExistingServer:false`);
+  - the old e2e specs (golden-path, releases, finding, activity) target the old UI and are rewritten by the owning task.
+- **Tokens:**
+  - dark mode follows the system plus `[data-theme]`;
+  - counsel colours `--counsel-*` (tailwind `counsel`);
+  - law text in `font-law` (Source Serif 4);
+  - a teal frame on `body[data-mode=counsel]`.

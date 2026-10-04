@@ -1,0 +1,480 @@
+{
+  "pack_version": "fintech-eu-fr@0.1.0",
+  "requirements": [
+    {
+      "id": "FR-CIF-STATUS-01",
+      "alias": "W1",
+      "domain": "licensing",
+      "title": "Product wording contradicts the advice it gives",
+      "statement": "A service that gives personalised recommendations on named financial instruments is investment advice and must be provided by a regulated firm: a conseiller en investissements financiers (CIF) registered with ORIAS. Product wording must not deny the status it requires.",
+      "derived_from": [
+        "mifid2-art4-1-4",
+        "cmf-l541-1",
+        "cmf-l546-1"
+      ],
+      "applies_when": "\"investment_advice\" in activities",
+      "mandatory": false,
+      "severity": "blocker",
+      "evidence_hints": {
+        "artifact_kinds": [
+          "business_plan",
+          "product_spec",
+          "regulatory_registration",
+          "terms"
+        ],
+        "code_globs": [
+          "backend/app/config.py",
+          "backend/app/advisor.py",
+          "frontend/src/components/Disclaimer.jsx"
+        ]
+      },
+      "evidence_needed": "Product wording and prompts; a CIF registration record with an ORIAS number.",
+      "remediation": {
+        "parts": [
+          {
+            "id": "P2",
+            "kind": "code",
+            "title": "Replace the 'not financial advice' disclaimer with a CIF status disclosure",
+            "required_change": "Add `CIF_ORIAS_NUMBER` (env, required in production). Replace the disclaimer with a status disclosure naming the CIF status and ORIAS number, the advice type (non-independent unless A1 says otherwise), that it is based on the information the client provided, and a link to the terms. Change the system prompt so the model presents its output as personalised advice under that status and keeps the suitability statement from P1.",
+            "locations": [
+              "backend/app/config.py:10-14",
+              "backend/app/advisor.py:17-19",
+              "frontend/src/components/Disclaimer.jsx"
+            ],
+            "boundaries": [
+              "backend/app/config.py",
+              "backend/app/advisor.py",
+              "frontend/src/components/Disclaimer.jsx"
+            ],
+            "done_when": [
+              "No string in the codebase says \"not financial advice\".",
+              "The disclosure shows the ORIAS number on every screen that shows recommendations.",
+              "Re-assessment marks FR-CIF-STATUS-01 satisfied, together with A1's evidence."
+            ],
+            "depends_on": [
+              "A1"
+            ]
+          },
+          {
+            "id": "A1",
+            "kind": "organisational",
+            "title": "Register as a CIF with ORIAS",
+            "required_change": "Register as a CIF with ORIAS and join an AMF-approved CIF association. Choose independent or non-independent advice.",
+            "locations": [
+              "compliance/cif-registration.md"
+            ],
+            "boundaries": [],
+            "done_when": [
+              "compliance/cif-registration.md states the ORIAS number, the association and the advice type."
+            ],
+            "depends_on": []
+          },
+          {
+            "id": "A3",
+            "kind": "document",
+            "title": "Update the terms to describe the advice service",
+            "required_change": "Update the terms to describe the advice service, its status, its fees and its limits.",
+            "locations": [
+              "compliance/terms.md"
+            ],
+            "boundaries": [],
+            "done_when": [
+              "compliance/terms.md describes the advice service and its CIF status."
+            ],
+            "depends_on": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "FR-SUITABILITY-01",
+      "alias": "W2",
+      "domain": "suitability",
+      "title": "Suitability assessment is incomplete",
+      "statement": "Before giving personalised advice the firm must collect the client's knowledge and experience, financial situation including ability to bear losses, and investment objectives including risk tolerance, and recommend only suitable products.",
+      "derived_from": [
+        "mifid2-art25-2",
+        "delreg565-art54-2",
+        "delreg565-art54-5",
+        "esma-suitability-2023"
+      ],
+      "applies_when": "\"investment_advice\" in activities",
+      "mandatory": false,
+      "severity": "blocker",
+      "evidence_hints": {
+        "artifact_kinds": [
+          "business_plan",
+          "product_spec"
+        ],
+        "code_globs": [
+          "backend/app/models.py",
+          "backend/app/schemas.py",
+          "backend/app/advisor.py",
+          "frontend/src/pages/Onboarding.jsx"
+        ]
+      },
+      "evidence_needed": "The data collected about the client and how the advisor uses it.",
+      "remediation": {
+        "parts": [
+          {
+            "id": "P1",
+            "kind": "code",
+            "title": "Collect knowledge/experience and loss capacity; use them in the advice",
+            "required_change": "Add three profile fields: `investment_knowledge` (none | basic | informed | advanced), `investment_experience_years` (int, 0-50) and `max_acceptable_loss_pct` (one of 0, 5, 10, 20, 30, 50). Add onboarding steps 7-9 using the existing step UI pattern. Pass the fields to the advisor and extend the system prompt: no product whose risk exceeds the client's tolerance or loss capacity; with `investment_knowledge = none` only diversified UCITS ETFs or bond funds; state in the summary why the advice is suitable. Add the columns as nullable (no migrations yet); a profile missing any of them is incomplete and `POST /api/recommendations` returns 400 'Complete your risk profile first'.",
+            "locations": [
+              "backend/app/models.py:29-40",
+              "backend/app/schemas.py:19-25",
+              "frontend/src/pages/Onboarding.jsx:26-31",
+              "backend/app/advisor.py:17-26"
+            ],
+            "boundaries": [
+              "backend/app/models.py",
+              "backend/app/schemas.py",
+              "frontend/src/pages/Onboarding.jsx",
+              "backend/app/advisor.py",
+              "backend/app/routers/advice.py",
+              "backend/tests/"
+            ],
+            "done_when": [
+              "`PUT /api/profile` accepts and returns the three fields with validation.",
+              "Onboarding shows 9 steps, and Finish is disabled until all are valid.",
+              "`POST /api/recommendations` returns 400 for a profile missing any of the new fields.",
+              "The advisor input JSON contains the three fields (unit test on the prompt builder).",
+              "Re-assessment marks FR-SUITABILITY-01 satisfied."
+            ],
+            "depends_on": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "GDPR-INFO-01",
+      "alias": "W3",
+      "domain": "data_protection",
+      "title": "No information notice on the processing of personal data",
+      "statement": "When personal data is collected from the data subject, the controller must provide, at collection time, its identity, the purposes and legal bases, the recipients and the other information listed in GDPR Art. 13.",
+      "derived_from": [
+        "gdpr-art13"
+      ],
+      "applies_when": "len(data_categories) > 0",
+      "mandatory": true,
+      "severity": "high",
+      "evidence_hints": {
+        "artifact_kinds": [
+          "privacy_policy",
+          "terms",
+          "product_spec"
+        ],
+        "code_globs": [
+          "frontend/src/pages/AuthPage.jsx"
+        ]
+      },
+      "evidence_needed": "A privacy policy or notice presented at sign-up.",
+      "remediation": {
+        "parts": [
+          {
+            "id": "A2",
+            "kind": "document",
+            "title": "Publish a privacy policy",
+            "required_change": "Publish a privacy policy covering: controller, purposes, legal bases, recipients (Mistral, hosting, Yahoo Finance), retention, rights, and the DPO/contact.",
+            "locations": [
+              "compliance/privacy-policy.md"
+            ],
+            "boundaries": [],
+            "done_when": [
+              "compliance/privacy-policy.md exists and covers all Art. 13 items."
+            ],
+            "depends_on": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "FR-SUITABILITY-UPDATE-01",
+      "alias": "W4",
+      "domain": "suitability",
+      "title": "Advice is shown after the client's profile changed",
+      "statement": "Firms may rely on client information unless they know it is manifestly out of date, inaccurate or incomplete. Advice generated for a superseded profile must not be presented as current.",
+      "derived_from": [
+        "delreg565-art54-7"
+      ],
+      "applies_when": "\"investment_advice\" in activities",
+      "mandatory": false,
+      "severity": "high",
+      "evidence_hints": {
+        "artifact_kinds": [
+          "product_spec"
+        ],
+        "code_globs": [
+          "backend/app/routers/profile.py",
+          "backend/app/routers/advice.py",
+          "backend/app/models.py"
+        ]
+      },
+      "evidence_needed": "What happens to existing advice when the profile is edited.",
+      "remediation": {
+        "parts": [
+          {
+            "id": "P3",
+            "kind": "code",
+            "title": "Flag outdated advice after a profile change",
+            "required_change": "`AnalysisOut` gets `outdated: bool`, true when `profile.updated_at > analysis.created_at`. The dashboard and Recommendations page show an 'Your profile changed. Refresh this analysis before acting on it.' banner and hide the recommendations' action buttons while the analysis is outdated.",
+            "locations": [
+              "backend/app/routers/profile.py:12-20",
+              "backend/app/routers/advice.py:31-38",
+              "backend/app/models.py:40"
+            ],
+            "boundaries": [
+              "backend/app/routers/advice.py",
+              "backend/app/schemas.py",
+              "frontend/src/pages/Dashboard.jsx",
+              "frontend/src/pages/Recommendations.jsx"
+            ],
+            "done_when": [
+              "A test shows: update the profile after an analysis -> `GET /api/recommendations/latest` returns `outdated: true`.",
+              "Re-assessment marks FR-SUITABILITY-UPDATE-01 satisfied."
+            ],
+            "depends_on": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "GDPR-ERASURE-01",
+      "alias": "W5",
+      "domain": "data_protection",
+      "title": "Users can't delete their account",
+      "statement": "Data subjects can obtain erasure of their personal data without undue delay. The product must offer a way to erase an account and all data linked to it.",
+      "derived_from": [
+        "gdpr-art17"
+      ],
+      "applies_when": "len(data_categories) > 0",
+      "mandatory": false,
+      "severity": "high",
+      "evidence_hints": {
+        "artifact_kinds": [
+          "product_spec",
+          "privacy_policy"
+        ],
+        "code_globs": [
+          "backend/app/routers/auth.py",
+          "backend/app/models.py"
+        ]
+      },
+      "evidence_needed": "Account deletion capability and cascade of dependent data.",
+      "remediation": {
+        "parts": [
+          {
+            "id": "P4",
+            "kind": "code",
+            "title": "Add account deletion that erases all user data",
+            "required_change": "Add `DELETE /api/auth/me`, requiring the password in the body, returning 204. Deletion explicitly removes the user's recommendations (or adds a `recommendations` relationship with `cascade=\"all, delete-orphan\"` on `User`), then deletes the user, cascading to profile and holdings. Add a 'Delete my account' action with an in-page confirmation in the layout's account menu; then clear the token and redirect to `/login`.",
+            "locations": [
+              "backend/app/routers/auth.py",
+              "backend/app/models.py:20-25",
+              "backend/app/models.py:57-64"
+            ],
+            "boundaries": [
+              "backend/app/routers/auth.py",
+              "backend/app/models.py",
+              "backend/app/schemas.py",
+              "frontend/src/components/Layout.jsx",
+              "frontend/src/lib/api.js",
+              "backend/tests/"
+            ],
+            "done_when": [
+              "A test shows that after `DELETE /api/auth/me` no rows remain for the user in any table.",
+              "Re-assessment marks GDPR-ERASURE-01 satisfied."
+            ],
+            "depends_on": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "GDPR-SECURITY-01",
+      "alias": "W6",
+      "domain": "data_protection",
+      "title": "Tokens can be signed with a public default secret",
+      "statement": "Controllers must implement technical measures appropriate to the risk. Session tokens must not be signed with a secret that is published in the source code.",
+      "derived_from": [
+        "gdpr-art32"
+      ],
+      "applies_when": "len(data_categories) > 0",
+      "mandatory": false,
+      "severity": "high",
+      "evidence_hints": {
+        "artifact_kinds": [
+          "product_spec"
+        ],
+        "code_globs": [
+          "backend/app/config.py",
+          "backend/app/auth.py",
+          "backend/app/main.py"
+        ]
+      },
+      "evidence_needed": "How the signing secret is configured.",
+      "remediation": {
+        "parts": [
+          {
+            "id": "P5",
+            "kind": "code",
+            "title": "Remove the default JWT secret",
+            "required_change": "Remove the default. At startup raise a clear error if `JWT_SECRET` is unset or shorter than 32 bytes, unless `APP_ENV=dev`; in dev mode generate a random per-process secret and log a warning that doesn't include the value. Update `.env.example` and `docker-compose.yml` accordingly.",
+            "locations": [
+              "backend/app/config.py:4"
+            ],
+            "boundaries": [
+              "backend/app/config.py",
+              "backend/app/main.py",
+              ".env.example",
+              "docker-compose.yml",
+              "backend/tests/"
+            ],
+            "done_when": [
+              "Starting with no secret and `APP_ENV` != `dev` exits with the error message.",
+              "Re-assessment marks GDPR-SECURITY-01 satisfied."
+            ],
+            "depends_on": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "FR-SUITABILITY-REPORT-01",
+      "alias": "W7",
+      "domain": "suitability",
+      "title": "Clients can't see the advice they received",
+      "statement": "When providing investment advice the firm must give the client a suitability statement in a durable medium. Clients must be able to retrieve the advice they were given.",
+      "derived_from": [
+        "mifid2-art25-6"
+      ],
+      "applies_when": "\"investment_advice\" in activities",
+      "mandatory": false,
+      "severity": "medium",
+      "evidence_hints": {
+        "artifact_kinds": [
+          "product_spec"
+        ],
+        "code_globs": [
+          "backend/app/routers/advice.py"
+        ]
+      },
+      "evidence_needed": "Whether past analyses can be retrieved by the client.",
+      "remediation": {
+        "parts": [
+          {
+            "id": "P6",
+            "kind": "code",
+            "title": "List and retrieve past analyses",
+            "required_change": "Add `GET /api/recommendations` listing the user's analyses (newest first: id, created_at, mode, outdated) and `GET /api/recommendations/{id}`. Add a 'History' list to the Recommendations page that opens past analyses read-only, with the disclosure from P2.",
+            "locations": [
+              "backend/app/routers/advice.py:31-38"
+            ],
+            "boundaries": [
+              "backend/app/routers/advice.py",
+              "backend/app/schemas.py",
+              "frontend/src/pages/Recommendations.jsx",
+              "frontend/src/lib/api.js",
+              "backend/tests/"
+            ],
+            "done_when": [
+              "A test shows two generated analyses are both listed and retrievable.",
+              "Re-assessment marks FR-SUITABILITY-REPORT-01 satisfied."
+            ],
+            "depends_on": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "AI-TRANSPARENCY-01",
+      "alias": "W8",
+      "domain": "ai_transparency",
+      "title": "AI transparency toward users",
+      "statement": "Users interacting with an AI system, and recipients of AI-generated text published to inform the public, must be told it is AI-generated unless obvious.",
+      "derived_from": [
+        "aiact-art50"
+      ],
+      "applies_when": "len(ai_uses) > 0",
+      "mandatory": false,
+      "severity": "medium",
+      "evidence_hints": {
+        "artifact_kinds": [
+          "product_spec"
+        ],
+        "code_globs": [
+          "frontend/src/pages/Recommendations.jsx",
+          "frontend/src/components/*.jsx"
+        ]
+      },
+      "evidence_needed": "How AI output is labelled in the UI.",
+      "remediation": {
+        "parts": [
+          {
+            "id": "A4",
+            "kind": "organisational",
+            "title": "Counsel decides whether AI Act Art. 50 applies",
+            "required_change": "Counsel decides whether Art. 50 applies; the UI already labels AI-generated output.",
+            "locations": [],
+            "boundaries": [],
+            "done_when": [
+              "A counsel review decision is recorded."
+            ],
+            "depends_on": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "FR-NO-EXECUTION-01",
+      "alias": "C1",
+      "domain": "licensing",
+      "title": "No trade execution or holding of client funds",
+      "statement": "Control: the product must not execute orders or hold client funds or securities, which would trigger further authorisations (payment services, investment services). Applies only if the profile declares such activities.",
+      "derived_from": [
+        "cmf-l541-1"
+      ],
+      "applies_when": "\"trade_execution\" in activities or \"client_funds\" in activities",
+      "mandatory": false,
+      "severity": "high",
+      "evidence_hints": {
+        "artifact_kinds": [
+          "product_spec"
+        ],
+        "code_globs": [
+          "backend/app/**/*.py"
+        ]
+      },
+      "evidence_needed": "Confirmation that orders are not executed.",
+      "remediation": {
+        "parts": []
+      }
+    },
+    {
+      "id": "GDPR-PASSWORD-HASH-01",
+      "alias": "C2",
+      "domain": "data_protection",
+      "title": "Passwords stored hashed",
+      "statement": "Control: credentials must be stored using a salted, adaptive hash and never in readable form.",
+      "derived_from": [
+        "gdpr-art32"
+      ],
+      "applies_when": "len(data_categories) > 0",
+      "mandatory": false,
+      "severity": "medium",
+      "evidence_hints": {
+        "artifact_kinds": [
+          "product_spec"
+        ],
+        "code_globs": [
+          "backend/app/auth.py"
+        ]
+      },
+      "evidence_needed": "Password hashing implementation.",
+      "remediation": {
+        "parts": []
+      }
+    }
+  ]
+}
