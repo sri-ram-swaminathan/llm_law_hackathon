@@ -20,3 +20,5 @@
 - 2026-10-04 14:46 · preflight · full: git-clean=warn, env:MISTRAL_API_KEY=missing
 - 2026-10-04 14:46 · preflight · full: env:MISTRAL_API_KEY=missing
 - 2026-10-04 14:46 · preflight · full: git-clean=warn
+- 2026-10-04 14:46 · run · pushed ft/cco-mvp
+- 2026-10-04 14:47 · planned · spec → planned — go from Roman Grebnev — auto mode, push all, fast checks (V2 + VA)

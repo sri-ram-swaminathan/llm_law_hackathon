@@ -2,13 +2,13 @@
 title: CCOmmit — AI Chief Compliance Officer MVP
 slug: cco-mvp
 created: 2026-10-04
-status: approved                  # draft → approved → planned → executing → verifying → closed
+status: planned                  # draft → approved → planned → executing → verifying → closed
 size: full                     # lite | full
 base_branch: dev            # asked at the start: main or dev
 integration_branch: ft/cco-mvp
 task_branch_pattern: ft/cco-mvp-{id}
 repos: [., ../FinTechProto]    # the lead repo first; other repos as relative paths
-run_mode: step                 # step (stop after every wave) | auto (stop at gates only)
+run_mode: auto                 # step (stop after every wave) | auto (stop at gates only)
 push: all                      # none | integration | all
 docker_parallel: 1             # max Docker-using tasks at once
 needs: [gh, docker, env:MISTRAL_API_KEY@.env]   # spec-wide preflight needs
