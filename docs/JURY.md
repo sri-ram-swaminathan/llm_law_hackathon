@@ -69,6 +69,10 @@ The short version:
 
 There's a diagram version: [Inside CCOmmit](https://claude.ai/artifact/Lq6HfpkzW2F6eqthXMvxAb).
 
+## Reproducing the results
+
+Tests, assessment scores against `expected.yaml`, the recorded snapshot, the legal index and the GitHub check: see [REPRODUCE.md](REPRODUCE.md).
+
 ## Known limits
 
 - **Model variance:** the model can flip about 1 requirement in 10 between runs. The recorded snapshot holds runs that matched the expected results 10/10.
