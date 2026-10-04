@@ -109,6 +109,7 @@ def assessment_views(s: Session, assessment: Assessment) -> list[FindingView]:
         product_reviews(s, release.product_id),
         release.product_id,
         version_by_finding(s),
+        gate.profile_hash(get_product(s)[1]),
     )
 
 

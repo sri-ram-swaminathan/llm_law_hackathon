@@ -5,6 +5,8 @@ to a finding (own review, else carried by requirement + evidence fingerprint); T
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Iterable, Mapping
 
 from .contracts import (
@@ -14,6 +16,7 @@ from .contracts import (
     Finding,
     FindingView,
     Readiness,
+    RegulatoryProfile,
     Release,
     Requirement,
     Review,
@@ -36,23 +39,42 @@ def effective_conclusion(ai: Conclusion, review: Review | None) -> Conclusion:
     return ai  # confirm, need_evidence
 
 
+PROFILE_FP_PREFIX = "profile:"
+
+
+def profile_hash(profile: RegulatoryProfile) -> str:
+    """sha256 of the canonical profile JSON, ignoring confirmed_at (re-confirming changes nothing)."""
+    d = profile.model_dump(mode="json", exclude={"confirmed_at"})
+    return hashlib.sha256(json.dumps(d, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _carries(r: Review, finding: Finding, current_profile_hash: str | None) -> bool:
+    if r.requirement_id != finding.requirement_id:
+        return False
+    if r.decision == "not_applicable":
+        # About the product's nature, not specific lines: carry while the profile is unchanged.
+        # No stored hash (legacy/fixture review) carries until revoked.
+        if not r.evidence_fingerprint.startswith(PROFILE_FP_PREFIX):
+            return True
+        return r.evidence_fingerprint == PROFILE_FP_PREFIX + (current_profile_hash or "")
+    return r.evidence_fingerprint == finding.evidence_fingerprint
+
+
 def pick_applicable_review(
     finding: Finding,
     reviews: Iterable[Review],
     product_id: str,
     version_by_finding: Mapping[str, str] | None = None,
+    current_profile_hash: str | None = None,
 ) -> tuple[Review | None, str | None]:
     """Latest non-revoked review on this finding; else the latest non-revoked review for the same
-    product and requirement with an equal evidence fingerprint (carried). Returns (review, carried_from)."""
+    product and requirement that carries (confirm/override: equal evidence fingerprint; not_applicable:
+    unchanged profile hash). Returns (review, carried_from)."""
     live = [r for r in reviews if r.revoked_at is None and r.product_id == product_id]
     own = [r for r in live if r.finding_id == finding.id]
     if own:
         return max(own, key=lambda r: r.created_at), None
-    carried = [
-        r
-        for r in live
-        if r.requirement_id == finding.requirement_id and r.evidence_fingerprint == finding.evidence_fingerprint
-    ]
+    carried = [r for r in live if _carries(r, finding, current_profile_hash)]
     if carried:
         r = max(carried, key=lambda r: r.created_at)
         return r, (version_by_finding or {}).get(r.finding_id)
@@ -64,10 +86,11 @@ def build_views(
     reviews: list[Review],
     product_id: str,
     version_by_finding: Mapping[str, str] | None = None,
+    current_profile_hash: str | None = None,
 ) -> list[FindingView]:
     out = []
     for f in findings:
-        rev, carried = pick_applicable_review(f, reviews, product_id, version_by_finding)
+        rev, carried = pick_applicable_review(f, reviews, product_id, version_by_finding, current_profile_hash)
         out.append(
             FindingView(
                 **f.model_dump(),
