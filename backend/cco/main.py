@@ -20,6 +20,7 @@ from .api import (
     releases_write,
     reviews,
     runs,
+    search,
 )
 from .auth import load_token, require_token
 from .db import init_db, make_engine, make_sessionmaker
@@ -38,6 +39,7 @@ ROUTERS = [
     runs.router,
     fixplan.router,
     provisions.router,
+    search.router,
 ]
 
 
