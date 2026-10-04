@@ -195,3 +195,5 @@
 - 2026-10-04 16:11 · run · T25 → done — merged; v1.0.0 10/10 x4, v0.9.0 9/10 x2
 - 2026-10-04 16:12 · run · pushed ft/cco-mvp
 - 2026-10-04 16:29 · run · G2 → done — adjust: UI redesign phase (see gate file §7)
+- 2026-10-04 16:30 · run · pushed ft/cco-mvp
+- 2026-10-04 16:39 · run · T19 → skipped — replaced by the UI redesign tasks T27, T29–T33 (G2 adjust)

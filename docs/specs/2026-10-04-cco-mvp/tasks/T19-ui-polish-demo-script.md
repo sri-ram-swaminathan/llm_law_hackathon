@@ -3,12 +3,12 @@ id: T19
 title: UI polish, demo script and demo-path e2e
 kind: work
 deps: [G2, T14, T15, T16, T17]
-owns: [frontend/src/**, contracts/openapi.json, frontend/e2e/demo-script.spec.ts, docs/demo-script.md]
+owns: [frontend/.t19-skipped]
 repo: .
 needs: [cmd:pnpm]
 verify: cd frontend && pnpm build && pnpm lint
 review: none
-status: todo
+status: skipped
 ---
 
 # T19 — UI polish, demo script and demo-path e2e

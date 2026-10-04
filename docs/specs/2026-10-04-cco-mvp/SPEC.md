@@ -11,6 +11,8 @@ repos: [., ../FinTechProto]    # the lead repo first; other repos as relative pa
 run_mode: auto                 # step (stop after every wave) | auto (stop at gates only)
 push: all                      # none | integration | all
 docker_parallel: 1             # max Docker-using tasks at once
+impl_model: opus
+check_model: opus
 needs: [gh, docker, env:MISTRAL_API_KEY@.env]   # spec-wide preflight needs
 ---
 
