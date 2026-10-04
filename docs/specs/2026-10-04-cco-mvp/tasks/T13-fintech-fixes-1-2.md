@@ -3,12 +3,12 @@ id: T13
 title: FinTechProto — fix-plan items 1–2 (suitability, CIF wording)
 kind: work
 deps: [T07]
-owns: [backend/app/models.py, backend/app/schemas.py, backend/app/advisor.py, backend/app/config.py, backend/app/routers/advice.py, frontend/src/pages/Onboarding.jsx, frontend/src/components/Disclaimer.jsx, backend/tests/test_suitability.py, backend/tests/test_disclosure.py, version]
+owns: [backend/tests/conftest.py, backend/app/models.py, backend/app/schemas.py, backend/app/advisor.py, backend/app/config.py, backend/app/routers/advice.py, frontend/src/pages/Onboarding.jsx, frontend/src/components/Disclaimer.jsx, backend/tests/test_suitability.py, backend/tests/test_disclosure.py, version]
 repo: ../FinTechProto
 needs: [cmd:uv]
 verify: cd backend && uv run --no-project --with-requirements requirements.txt --with pytest --with httpx python -m pytest -q
 review: none
-status: todo
+status: done
 ---
 
 # T13 — FinTechProto: fix-plan items 1–2 (suitability, CIF wording)

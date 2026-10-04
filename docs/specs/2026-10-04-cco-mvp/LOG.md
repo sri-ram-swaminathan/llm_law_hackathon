@@ -35,3 +35,10 @@
 - 2026-10-04 14:52 · run · pushed ft/cco-mvp-t07
 - 2026-10-04 14:52 · run · T07 merged into ft/cco-mvp
 - 2026-10-04 14:52 · run · T07 → done — merged; demo/rc=cdf9a0f; 11 tests
+- 2026-10-04 14:53 · run · pushed ft/cco-mvp
+- 2026-10-04 14:53 · run · T13 worktree on ft/cco-mvp-t13
+- 2026-10-04 14:53 · run · T13 → doing
+- 2026-10-04 14:55 · verify · T13 verify exit 0 (9s)
+- 2026-10-04 14:55 · run · pushed ft/cco-mvp-t13
+- 2026-10-04 14:55 · run · T13 merged into ft/cco-mvp
+- 2026-10-04 14:55 · run · T13 → done — merged; demo/v1=0042de0; 30 tests; conftest deviation accepted
