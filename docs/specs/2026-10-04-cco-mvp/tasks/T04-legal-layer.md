@@ -5,7 +5,7 @@ kind: work
 deps: [T01]
 owns: [backend/cco/legal/**, data/corpus-cache/**, data/sources/**, backend/tests/test_legal.py]
 repo: .
-needs: [cmd:uv, env:MISTRAL_API_KEY]
+needs: [cmd:uv, env:MISTRAL_API_KEY@.env]
 verify: cd backend && uv run pytest tests/test_legal.py -q -m "not integration"
 review: none
 status: todo

@@ -5,7 +5,7 @@ kind: work
 deps: [T01]
 owns: [backend/cco/agent/**, backend/cco/cli/__init__.py, backend/cco/cli/spike.py, backend/tests/test_locator.py, backend/tests/test_evaluator.py]
 repo: .
-needs: [cmd:uv, env:MISTRAL_API_KEY]
+needs: [cmd:uv, env:MISTRAL_API_KEY@.env]
 verify: cd backend && uv run pytest tests/test_locator.py tests/test_evaluator.py -q
 review: none
 status: todo

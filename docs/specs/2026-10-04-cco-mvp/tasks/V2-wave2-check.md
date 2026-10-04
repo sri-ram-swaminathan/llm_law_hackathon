@@ -5,7 +5,7 @@ kind: verify
 deps: [T08, T09, T10, T11, T12, T13]
 owns: []
 repo: .
-needs: [docker, cmd:pnpm, cmd:uv, env:MISTRAL_API_KEY]
+needs: [docker, cmd:pnpm, cmd:uv, env:MISTRAL_API_KEY@.env]
 verify: make verify-w2
 review: none
 status: todo

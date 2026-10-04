@@ -5,7 +5,7 @@ kind: verify
 deps: [T19, G3]
 owns: []
 repo: .
-needs: [docker, cmd:pnpm, cmd:uv, env:MISTRAL_API_KEY]
+needs: [docker, cmd:pnpm, cmd:uv, env:MISTRAL_API_KEY@.env]
 verify: bash docs/specs/2026-10-04-cco-mvp/acceptance.sh
 review: none
 status: todo
