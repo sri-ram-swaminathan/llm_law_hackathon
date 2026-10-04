@@ -1,0 +1,1472 @@
+#!/usr/bin/env python3
+"""sdd — helper for spec-driven work folders. Python 3.9+, standard library only.
+
+The folder contract is described in docs/specs/README.md. Run `sdd -h` for commands.
+Only the orchestrator (the session running /roman:run) should run the commands that
+write: set, log, verify, merge, push.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import fnmatch
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+from string import Template
+
+VERSION = "0.2.2"
+KIT_DIR = Path(__file__).resolve().parent
+PROTECTED_BRANCHES = {"main", "master", "dev", "develop", "staging", "production", "prod"}
+SPEC_STATUSES = ["draft", "approved", "planned", "executing", "verifying", "closed"]
+TASK_STATUSES = ["todo", "doing", "review", "done", "blocked", "skipped"]
+KINDS = ["work", "verify", "gate"]
+# none: merged on its verify command alone. light: one review, blocking only on bugs in the task's own files.
+REVIEWS = ["none", "light"]
+REQUIRED_SETTINGS = ["title", "slug", "created", "status", "size", "base_branch",
+                     "integration_branch", "task_branch_pattern", "repos", "run_mode", "push"]
+FOLDER_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-([a-z0-9][a-z0-9-]*)$")
+SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*$")
+LOG_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) · ([^·]+?) · (.*)$")
+SECRET_NAME_RE = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)", re.I)
+MIN_FREE_DISK = 5 * 1024 ** 3
+MIN_FREE_MEM = 2 * 1024 ** 3
+
+
+class SddError(Exception):
+    """A user-facing error: printed without a traceback, exit code 1 unless given."""
+
+    def __init__(self, message: str, code: int = 1):
+        super().__init__(message)
+        self.code = code
+
+
+# ---------------------------------------------------------------- frontmatter
+
+def _opens_quote(text: str, i: int) -> bool:
+    # A quote starts a quoted run only at the start of a word and only if it is closed later,
+    # so apostrophes inside words ("Roman's", "what's-new.md") stay literal.
+    ch = text[i]
+    return ch in "\"'" and (i == 0 or not text[i - 1].isalnum()) and ch in text[i + 1:]
+
+
+def _strip_comment(value: str) -> str:
+    quote = None
+    for i, ch in enumerate(value):
+        if quote:
+            if ch == quote:
+                quote = None
+        elif _opens_quote(value, i):
+            quote = ch
+        elif ch == "#" and (i == 0 or value[i - 1].isspace()):
+            return value[:i]
+    return value
+
+
+def _unquote(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
+def _split_list(inner: str) -> list[str]:
+    items, quote, current = [], None, ""
+    for i, ch in enumerate(inner):
+        if quote:
+            current += ch
+            if ch == quote:
+                quote = None
+        elif _opens_quote(inner, i):
+            quote = ch
+            current += ch
+        elif ch == ",":
+            items.append(current)
+            current = ""
+        else:
+            current += ch
+    items.append(current)
+    return [_unquote(x.strip()) for x in items if x.strip()]
+
+
+def parse_value(raw: str):
+    value = _strip_comment(raw).strip()
+    if value.startswith("[") and value.endswith("]"):
+        return _split_list(value[1:-1])
+    return _unquote(value)
+
+
+def split_frontmatter(text: str) -> tuple[list[str], str]:
+    """Return (frontmatter lines, body). Raises SddError if there is no frontmatter."""
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != "---":
+        raise SddError("missing frontmatter (file must start with ---)")
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return lines[1:i], "\n".join(lines[i + 1:])
+    raise SddError("unterminated frontmatter (no closing ---)")
+
+
+def parse_frontmatter(text: str) -> tuple[dict, str]:
+    fm_lines, body = split_frontmatter(text)
+    data = {}
+    for line in fm_lines:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if ":" not in line:
+            raise SddError(f"bad frontmatter line: {line!r}")
+        key, raw = line.split(":", 1)
+        data[key.strip()] = parse_value(raw)
+    return data, body
+
+
+def set_frontmatter_value(text: str, key: str, value: str) -> str:
+    fm_lines, body = split_frontmatter(text)
+    pattern = re.compile(rf"^({re.escape(key)}:\s*)(.*?)(\s+#.*)?$")
+    for i, line in enumerate(fm_lines):
+        m = pattern.match(line)
+        if m:
+            fm_lines[i] = f"{m.group(1)}{value}{m.group(3) or ''}"
+            break
+    else:
+        fm_lines.append(f"{key}: {value}")
+    return "---\n" + "\n".join(fm_lines) + "\n---\n" + body
+
+
+# ---------------------------------------------------------------- model
+
+class Task:
+    def __init__(self, path: Path, data: dict, body: str):
+        self.path = path
+        self.data = data
+        self.body = body
+        self.id = str(data.get("id", ""))
+        self.title = str(data.get("title", ""))
+        self.kind = str(data.get("kind", ""))
+        self.deps = _as_list(data.get("deps"))
+        self.owns = _as_list(data.get("owns"))
+        self.needs = _as_list(data.get("needs"))
+        self.repo = str(data.get("repo") or ".")
+        self.verify = str(data.get("verify") or "")
+        self.status = str(data.get("status", ""))
+        self.review = str(data.get("review") or ("light" if self.kind == "work" else "none"))
+
+    def dod_items(self) -> list[str]:
+        section = _section(self.body, "definition of done")
+        return re.findall(r"^\s*- \[[ xX]\] +(.+)$", section, re.M)
+
+    def as_dict(self) -> dict:
+        return {"id": self.id, "title": self.title, "kind": self.kind, "deps": self.deps,
+                "owns": self.owns, "needs": self.needs, "repo": self.repo,
+                "verify": self.verify, "status": self.status, "review": self.review, "file": str(self.path)}
+
+
+def _as_list(value) -> list[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        return [str(v) for v in value]
+    return [str(value)]
+
+
+def _section(body: str, name: str) -> str:
+    """Text of the first markdown section whose heading contains `name` (case-insensitive)."""
+    lines = body.split("\n")
+    out, inside, level = [], False, 0
+    for line in lines:
+        m = re.match(r"^(#{1,6})\s+(.*)$", line)
+        if m:
+            if inside and len(m.group(1)) <= level:
+                break
+            if not inside and name in m.group(2).lower():
+                inside, level = True, len(m.group(1))
+                continue
+        if inside:
+            out.append(line)
+    return "\n".join(out)
+
+
+class Folder:
+    def __init__(self, path: Path):
+        self.path = path
+        spec_path = path / "SPEC.md"
+        if not spec_path.exists():
+            raise SddError(f"{path} has no SPEC.md")
+        self.settings, self.spec_body = parse_frontmatter(spec_path.read_text())
+        m = FOLDER_RE.match(path.name)
+        self.slug = str(self.settings.get("slug") or (m.group(2) if m else path.name))
+
+    @property
+    def specs_dir(self) -> Path:
+        return self.path.parent
+
+    @property
+    def repo_root(self) -> Path:
+        return self.specs_dir.parent.parent
+
+    def repos(self) -> list[str]:
+        return _as_list(self.settings.get("repos")) or ["."]
+
+    def repo_path(self, repo: str) -> Path:
+        return (self.repo_root / repo).resolve()
+
+    def integration_branch(self) -> str:
+        return str(self.settings.get("integration_branch") or f"ft/{self.slug}")
+
+    def task_branch(self, task_id: str) -> str:
+        pattern = str(self.settings.get("task_branch_pattern") or f"ft/{self.slug}-{{id}}")
+        return pattern.replace("{id}", task_id.lower()).replace("{slug}", self.slug)
+
+    def tasks(self) -> list[Task]:
+        tasks_dir = self.path / "tasks"
+        if not tasks_dir.is_dir():
+            return []
+        result = []
+        for p in sorted(tasks_dir.glob("*.md")):
+            try:
+                data, body = parse_frontmatter(p.read_text())
+            except SddError as exc:
+                raise SddError(f"{p.relative_to(self.path)}: {exc}")
+            result.append(Task(p, data, body))
+        return result
+
+    def task(self, task_id: str) -> Task:
+        for t in self.tasks():
+            if t.id == task_id:
+                return t
+        raise SddError(f"no task {task_id!r} in {self.path.name}")
+
+    def log(self, phase: str, event: str) -> str:
+        line = f"- {now()} · {phase} · {event}"
+        log_path = self.path / "LOG.md"
+        if not log_path.exists():
+            log_path.write_text(f"# Log — {self.slug}\n\n")
+        # Append-only writes: parallel `sdd verify` runs log at the same time, and a
+        # read-modify-write would lose lines.
+        with log_path.open("a") as fh:
+            fh.write(line + "\n")
+        return line
+
+    def log_entries(self) -> list[tuple[dt.datetime, str, str]]:
+        log_path = self.path / "LOG.md"
+        entries = []
+        if log_path.exists():
+            for line in log_path.read_text().split("\n"):
+                m = LOG_RE.match(line.strip())
+                if m:
+                    stamp = dt.datetime.strptime(m.group(1), "%Y-%m-%d %H:%M")
+                    entries.append((stamp, m.group(2).strip(), m.group(3).strip()))
+        return entries
+
+
+def now() -> str:
+    return dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+# ---------------------------------------------------------------- locating folders
+
+def git(args: list[str], cwd: Path, check: bool = True, timeout: int = 60) -> subprocess.CompletedProcess:
+    proc = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
+    if check and proc.returncode != 0:
+        raise SddError(f"git {' '.join(args)} failed in {cwd}: {proc.stderr.strip() or proc.stdout.strip()}")
+    return proc
+
+
+def find_specs_dir(explicit: str | None) -> Path:
+    if explicit:
+        return Path(explicit).resolve()
+    if os.environ.get("SDD_SPECS_DIR"):
+        return Path(os.environ["SDD_SPECS_DIR"]).resolve()
+    if KIT_DIR.name == "_kit" and KIT_DIR.parent.name == "specs":
+        return KIT_DIR.parent
+    proc = git(["rev-parse", "--show-toplevel"], Path.cwd(), check=False)
+    if proc.returncode != 0:
+        raise SddError("not inside a git repo; pass --specs DIR")
+    return Path(proc.stdout.strip()) / "docs" / "specs"
+
+
+def work_folders(specs: Path) -> list[Path]:
+    if not specs.is_dir():
+        return []
+    return sorted(p for p in specs.iterdir() if p.is_dir() and FOLDER_RE.match(p.name))
+
+
+def resolve_folder(specs: Path, selector: str | None) -> Folder:
+    if selector:
+        candidate = Path(selector)
+        if candidate.is_dir() and (candidate / "SPEC.md").exists():
+            return Folder(candidate.resolve())
+        for p in work_folders(specs):
+            if p.name == selector or FOLDER_RE.match(p.name).group(2) == selector:
+                return Folder(p)
+        raise SddError(f"no work folder {selector!r} in {specs}")
+    cwd = Path.cwd().resolve()
+    for p in work_folders(specs):
+        if cwd == p or p in cwd.parents:
+            return Folder(p)
+    open_folders = []
+    for p in work_folders(specs):
+        try:
+            f = Folder(p)
+        except SddError:
+            continue
+        if f.settings.get("status") != "closed":
+            open_folders.append(f)
+    if not open_folders:
+        raise SddError(f"no open work folder in {specs}; create one with `sdd new <slug>`")
+    return open_folders[-1]
+
+
+# ---------------------------------------------------------------- graph
+
+def compute_waves(tasks: list[Task]) -> dict[str, int]:
+    """Wave = 1 + max wave of deps. Raises SddError on a cycle or unknown dep."""
+    by_id = {t.id: t for t in tasks}
+    waves: dict[str, int] = {}
+    state: dict[str, int] = {}  # 1 = visiting, 2 = done
+
+    def visit(tid: str, path: list[str]) -> int:
+        if state.get(tid) == 2:
+            return waves[tid]
+        if state.get(tid) == 1:
+            cycle = path[path.index(tid):] + [tid]
+            raise SddError("dependency cycle: " + " → ".join(cycle))
+        state[tid] = 1
+        wave = 1
+        for dep in by_id[tid].deps:
+            if dep not in by_id:
+                raise SddError(f"{tid} depends on unknown task {dep!r}")
+            wave = max(wave, visit(dep, path + [tid]) + 1)
+        state[tid] = 2
+        waves[tid] = wave
+        return wave
+
+    for t in tasks:
+        visit(t.id, [])
+    return waves
+
+
+def ancestors(tasks: list[Task]) -> dict[str, set[str]]:
+    by_id = {t.id: t for t in tasks}
+    memo: dict[str, set[str]] = {}
+
+    def anc(tid: str) -> set[str]:
+        if tid not in memo:
+            result: set[str] = set()
+            for dep in by_id[tid].deps:
+                if dep in by_id:
+                    result |= {dep} | anc(dep)
+            memo[tid] = result
+        return memo[tid]
+
+    return {t.id: anc(t.id) for t in tasks}
+
+
+def _has_glob(p: str) -> bool:
+    return any(c in p for c in "*?[")
+
+
+def _static_prefix(p: str) -> str:
+    parts = []
+    for part in p.split("/"):
+        if _has_glob(part):
+            break
+        parts.append(part)
+    return "/".join(parts)
+
+
+def _related(a: str, b: str) -> bool:
+    if not a or not b:
+        return True
+    return a == b or a.startswith(b + "/") or b.startswith(a + "/")
+
+
+def _norm_path(p: str) -> str:
+    p = p.strip()
+    while p.startswith("./"):
+        p = p[2:]
+    return p.strip("/")
+
+
+def owns_overlap(a: str, b: str) -> bool:
+    """Conservative: True when two owned paths/globs could touch the same file."""
+    a, b = _norm_path(a), _norm_path(b)
+    if a == b:
+        return True
+    ga, gb = _has_glob(a), _has_glob(b)
+    if not ga and not gb:
+        return _related(a, b)
+    if ga and not gb:
+        return fnmatch.fnmatch(b, a) or _related(_static_prefix(a), b)
+    if gb and not ga:
+        return owns_overlap(b, a)
+    return _related(_static_prefix(a), _static_prefix(b))
+
+
+# ---------------------------------------------------------------- check
+
+def check_folder(folder: Folder) -> tuple[list[str], list[str]]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    s = folder.settings
+    for key in REQUIRED_SETTINGS:
+        if key not in s or s[key] in ("", None):
+            errors.append(f"SPEC.md: missing setting {key!r}")
+    if s.get("status") and s["status"] not in SPEC_STATUSES:
+        errors.append(f"SPEC.md: status {s['status']!r} not in {SPEC_STATUSES}")
+    if s.get("run_mode") and s["run_mode"] not in ("step", "auto"):
+        errors.append("SPEC.md: run_mode must be step or auto")
+    if s.get("push") and s["push"] not in ("none", "integration", "all"):
+        errors.append("SPEC.md: push must be none, integration or all")
+    if s.get("size") and s["size"] not in ("lite", "full"):
+        errors.append("SPEC.md: size must be lite or full")
+    if str(s.get("integration_branch", "")) in PROTECTED_BRANCHES:
+        errors.append("SPEC.md: integration_branch must not be a protected branch")
+    if "{id}" not in str(s.get("task_branch_pattern", "{id}")):
+        errors.append("SPEC.md: task_branch_pattern must contain {id}")
+    body = folder.spec_body.lower()
+    required_sections = ["problem", "acceptance"]
+    if s.get("size") == "full":
+        required_sections += ["design", "decisions"]
+    for name in required_sections:
+        if not re.search(rf"^#+ .*{name}", body, re.M):
+            errors.append(f"SPEC.md: no section heading containing {name!r}")
+
+    try:
+        tasks = folder.tasks()
+    except SddError as exc:
+        return errors + [str(exc)], warnings
+    if not tasks:
+        warnings.append("no tasks yet (tasks/*.md)")
+        return errors, warnings
+
+    seen: dict[str, Path] = {}
+    repos = folder.repos()
+    for t in tasks:
+        rel = t.path.relative_to(folder.path)
+        for key in ("id", "title", "kind", "status"):
+            if not t.data.get(key):
+                errors.append(f"{rel}: missing {key!r}")
+        if t.id and not ID_RE.match(t.id):
+            errors.append(f"{rel}: bad id {t.id!r}")
+        if t.id in seen:
+            errors.append(f"{rel}: duplicate id {t.id!r} (also in {seen[t.id].name})")
+        seen[t.id] = t.path
+        if t.id and not t.path.name.startswith(t.id):
+            warnings.append(f"{rel}: file name should start with its id {t.id!r}")
+        if t.kind and t.kind not in KINDS:
+            errors.append(f"{rel}: kind {t.kind!r} not in {KINDS}")
+        if t.status and t.status not in TASK_STATUSES:
+            errors.append(f"{rel}: status {t.status!r} not in {TASK_STATUSES}")
+        if t.id in t.deps:
+            errors.append(f"{rel}: depends on itself")
+        if t.repo not in repos:
+            errors.append(f"{rel}: repo {t.repo!r} not in settings repos {repos}")
+        if t.kind in ("work", "verify"):
+            if not t.verify:
+                errors.append(f"{rel}: {t.kind} task needs a verify command")
+            if not t.dod_items():
+                errors.append(f"{rel}: needs at least one '- [ ]' item under 'Definition of done'")
+        if t.kind == "work" and not t.owns:
+            errors.append(f"{rel}: work task needs an owns list")
+        if t.review not in REVIEWS:
+            errors.append(f"{rel}: review {t.review!r} not in {REVIEWS}")
+        if t.kind == "gate" and t.owns:
+            warnings.append(f"{rel}: gate task owns files; gates are human decisions")
+        if t.status == "done" and t.kind in ("work", "verify") and not (folder.path / "evidence" / f"{t.id}.md").exists():
+            errors.append(f"{rel}: status done but evidence/{t.id}.md is missing")
+        for need in t.needs:
+            if need.split(":", 1)[0] not in NEED_CHECKS:
+                warnings.append(f"{rel}: unknown need {need!r}")
+
+    ids = {t.id for t in tasks}
+    for t in tasks:
+        for dep in t.deps:
+            if dep not in ids:
+                errors.append(f"{t.path.relative_to(folder.path)}: depends on unknown task {dep!r}")
+    if any("unknown task" in e for e in errors):
+        return errors, warnings
+    try:
+        compute_waves(tasks)
+    except SddError as exc:
+        errors.append(str(exc))
+        return errors, warnings
+
+    anc = ancestors(tasks)
+    work = [t for t in tasks if t.kind == "work"]
+    for i, a in enumerate(work):
+        for b in work[i + 1:]:
+            if a.repo != b.repo or a.id in anc[b.id] or b.id in anc[a.id]:
+                continue
+            for pa in a.owns:
+                for pb in b.owns:
+                    if owns_overlap(pa, pb):
+                        errors.append(f"{a.id} and {b.id} can run in parallel but both own {pa!r}/{pb!r}; "
+                                      "split the files or add a dependency")
+    verifies = [t for t in tasks if t.kind == "verify"]
+    for t in work:
+        if not any(t.id in anc[v.id] for v in verifies):
+            warnings.append(f"{t.id}: no verify task downstream (integration check)")
+    if s.get("size") == "lite" and len(tasks) > 4:
+        warnings.append(f"size is lite but there are {len(tasks)} tasks; consider size: full")
+    return errors, warnings
+
+
+# ---------------------------------------------------------------- status
+
+def runnable(tasks: list[Task]) -> list[Task]:
+    status = {t.id: t.status for t in tasks}
+    return [t for t in tasks if t.status == "todo" and all(status.get(d) in ("done", "skipped") for d in t.deps)]
+
+
+def elapsed_by_task(entries) -> dict[str, float]:
+    started: dict[str, dt.datetime] = {}
+    result: dict[str, float] = {}
+    for stamp, _phase, event in entries:
+        m = re.match(r"^(\S+) → (\S+)", event)
+        if not m:
+            continue
+        tid, status = m.groups()
+        if status == "doing":
+            started[tid] = stamp
+        elif status in ("done", "review", "blocked", "skipped") and tid in started:
+            result[tid] = (stamp - started[tid]).total_seconds()
+    return result
+
+
+def elapsed_by_wave(entries, waves: dict[str, int]) -> dict[int, dict]:
+    """First `doing` to last finish per wave; `running` until every task in it has finished."""
+    starts: dict[str, dt.datetime] = {}
+    ends: dict[str, dt.datetime] = {}
+    for stamp, _phase, event in entries:
+        m = re.match(r"^(\S+) → (\S+)", event)
+        if not m or m.group(1) not in waves:
+            continue
+        tid, status = m.groups()
+        if status == "doing":
+            starts.setdefault(tid, stamp)
+        elif status in ("done", "skipped"):
+            ends[tid] = stamp
+    result: dict[int, dict] = {}
+    for wave in sorted(set(waves.values())):
+        ids = [t for t, w in waves.items() if w == wave]
+        began = [starts[t] for t in ids if t in starts]
+        if not began:
+            continue
+        finished = all(t in ends for t in ids)
+        last = max(ends[t] for t in ids if t in ends) if any(t in ends for t in ids) else None
+        seconds = (last - min(began)).total_seconds() if finished and last else None
+        result[wave] = {"seconds": seconds, "running": not finished}
+    return result
+
+
+def _fmt_duration(seconds: float) -> str:
+    minutes = int(seconds // 60)
+    return f"{minutes // 60}h{minutes % 60:02d}m"
+
+
+def status_data(folder: Folder) -> dict:
+    tasks = folder.tasks()
+    waves = compute_waves(tasks) if tasks else {}
+    entries = folder.log_entries()
+    elapsed = elapsed_by_task(entries)
+    ready = runnable(tasks)
+    return {
+        "folder": str(folder.path), "slug": folder.slug, "title": folder.settings.get("title"),
+        "spec_status": folder.settings.get("status"), "run_mode": folder.settings.get("run_mode"),
+        "base_branch": folder.settings.get("base_branch"), "integration_branch": folder.integration_branch(),
+        "tasks": [dict(t.as_dict(), wave=waves.get(t.id), branch=folder.task_branch(t.id),
+                       elapsed=elapsed.get(t.id)) for t in tasks],
+        "runnable": [t.id for t in ready],
+        "pending_gates": [t.id for t in ready if t.kind == "gate"],
+        "done": bool(tasks) and all(t.status in ("done", "skipped") for t in tasks),
+        "waves": {str(k): v for k, v in elapsed_by_wave(entries, waves).items()},
+        "created": str(folder.settings.get("created")),
+        "last_log": f"{entries[-1][0]:%Y-%m-%d %H:%M} · {entries[-1][1]} · {entries[-1][2]}" if entries else None,
+    }
+
+
+# ---------------------------------------------------------------- redaction
+
+def secret_values(extra_names: set[str], extra_values: list[str] | None = None) -> list[str]:
+    values = set(v for v in (extra_values or []) if v and len(v) >= 6)
+    for key, value in os.environ.items():
+        if value and len(value) >= 8 and (key in extra_names or SECRET_NAME_RE.search(key)):
+            values.add(value)
+    return sorted(values, key=len, reverse=True)
+
+
+def redact(text: str, values: list[str]) -> str:
+    for v in values:
+        text = text.replace(v, "***")
+    return text
+
+
+# ---------------------------------------------------------------- preflight
+
+def _run_quiet(cmd, cwd: Path | None = None, timeout: int = 30, shell: bool = False) -> tuple[int, str]:
+    """Run a command; return (exit code, stdout). Output is never printed by callers
+    except for fields they parse deliberately."""
+    try:
+        proc = subprocess.run(cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True,
+                              timeout=timeout, shell=shell)
+        return proc.returncode, proc.stdout
+    except FileNotFoundError:
+        return 127, ""
+    except subprocess.TimeoutExpired:
+        return 124, ""
+
+
+def _env_file_value(path: Path, name: str) -> str | None:
+    if not path.exists():
+        return None
+    for line in path.read_text(errors="replace").split("\n"):
+        m = re.match(rf"^\s*(?:export\s+)?{re.escape(name)}\s*=\s*(.*)$", line)
+        if m:
+            return _unquote(m.group(1).strip())
+    return None
+
+
+def check_env(arg: str, folder: Folder, secrets: list[str]) -> tuple[str, str]:
+    name, _, file_part = arg.partition("@")
+    if file_part:
+        value = _env_file_value(folder.repo_root / file_part, name)
+        if value:
+            secrets.append(value)
+            return "ok", f"{name} set in {file_part} (value not shown)"
+        return "missing", f"{name} not set in {file_part}"
+    if os.environ.get(name):
+        secrets.append(os.environ[name])
+        return "ok", f"{name} set in environment (value not shown)"
+    return "missing", f"{name} not set in environment"
+
+
+def check_kube(arg: str, folder: Folder, secrets: list[str]) -> tuple[str, str]:
+    context, _, namespace = arg.partition("/")
+    if not shutil.which("kubectl"):
+        return "missing", "kubectl not installed"
+    code, out = _run_quiet(["kubectl", "config", "get-contexts", context, "-o", "name"])
+    if code != 0 or not out.strip():
+        return "missing", f"kube context {context!r} not found"
+    cmd = ["kubectl", "--context", context, "auth", "can-i", "get", "pods"]
+    if namespace:
+        cmd += ["-n", namespace]
+    code, out = _run_quiet(cmd, timeout=20)
+    if out.strip() == "yes":
+        return "ok", f"context {context!r}{' namespace ' + namespace if namespace else ''}: can get pods"
+    return "fail", f"context {context!r}: cannot get pods (cluster unreachable or no permission)"
+
+
+def _docker_config() -> dict:
+    path = Path(os.environ.get("DOCKER_CONFIG", Path.home() / ".docker")) / "config.json"
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def check_registry(arg: str, folder: Folder, secrets: list[str]) -> tuple[str, str]:
+    host, _, image = arg.partition("/")
+    cfg = _docker_config()
+    known = set(cfg.get("auths", {})) | set(cfg.get("credHelpers", {}))
+    has_auth = any(host in k for k in known)
+    if not has_auth and cfg.get("credsStore"):
+        helper = f"docker-credential-{cfg['credsStore']}"
+        code, out = _run_quiet([helper, "list"], timeout=15)
+        if code == 0:
+            try:
+                has_auth = any(host in k for k in json.loads(out or "{}"))
+            except ValueError:
+                pass
+    if not has_auth:
+        return "missing", f"no docker login for {host}"
+    if not image:
+        return "ok", f"docker login present for {host}"
+    code, _ = _run_quiet(["docker", "manifest", "inspect", f"{host}/{image}"], timeout=45)
+    if code == 0:
+        return "ok", f"can read {host}/{image}"
+    return "fail", f"login present but cannot read {host}/{image}"
+
+
+def check_docker(arg: str, folder: Folder, secrets: list[str]) -> tuple[str, str]:
+    code, version = _run_quiet(["docker", "version", "--format", "{{.Server.Version}}"], timeout=20)
+    if code != 0:
+        return "missing", "docker daemon not reachable"
+    # Count what `docker ps` shows; `docker info` also counts Docker Desktop's hidden containers.
+    _, ids = _run_quiet(["docker", "ps", "-q"], timeout=20)
+    return "ok", f"docker {version.strip()}, {len(ids.split())} containers running (not ours unless labelled)"
+
+
+def check_cmd(arg: str, folder: Folder, secrets: list[str]) -> tuple[str, str]:
+    return ("ok", f"{arg} on PATH") if shutil.which(arg) else ("missing", f"{arg} not on PATH")
+
+
+def check_gh(arg: str, folder: Folder, secrets: list[str]) -> tuple[str, str]:
+    if not shutil.which("gh"):
+        return "missing", "gh not installed"
+    code, _ = _run_quiet(["gh", "auth", "status"], timeout=20)
+    return ("ok", "gh authenticated") if code == 0 else ("fail", "gh not authenticated")
+
+
+def check_git_push(arg: str, folder: Folder, secrets: list[str]) -> tuple[str, str]:
+    results = []
+    worst = "ok"
+    for repo in ([arg] if arg else folder.repos()):
+        path = folder.repo_path(repo)
+        probe = f"refs/heads/sdd-preflight-probe-{os.getpid()}"
+        code, _ = _run_quiet(["git", "push", "--dry-run", "--quiet", "origin", f"HEAD:{probe}"], cwd=path, timeout=45)
+        if code == 0:
+            results.append(f"{repo}: can push")
+        else:
+            worst = "fail"
+            results.append(f"{repo}: push dry-run failed")
+    return worst, "; ".join(results)
+
+
+def check_custom(arg: str, folder: Folder, secrets: list[str]) -> tuple[str, str]:
+    code, _ = _run_quiet(_unquote(arg), cwd=folder.repo_root, timeout=60, shell=True)
+    return ("ok", "exit 0") if code == 0 else ("fail", f"exit {code}")
+
+
+def check_git_clean(arg: str, folder: Folder, secrets: list[str]) -> tuple[str, str]:
+    dirty = []
+    for repo in folder.repos():
+        code, out = _run_quiet(["git", "status", "--porcelain", "--untracked-files=no"], cwd=folder.repo_path(repo))
+        if code != 0:
+            return "fail", f"{repo}: not a git repo"
+        if out.strip():
+            dirty.append(repo)
+    return ("warn", f"uncommitted changes in {', '.join(dirty)}") if dirty else ("ok", "working trees clean")
+
+
+def check_disk(arg: str, folder: Folder, secrets: list[str]) -> tuple[str, str]:
+    free = shutil.disk_usage(folder.repo_root).free
+    detail = f"{free / 1024 ** 3:.1f} GiB free"
+    return ("ok", detail) if free >= MIN_FREE_DISK else ("warn", detail + " (low)")
+
+
+NEED_CHECKS = {
+    "env": check_env, "kube": check_kube, "registry": check_registry, "docker": check_docker,
+    "cmd": check_cmd, "gh": check_gh, "git-push": check_git_push, "check": check_custom,
+    "git-clean": check_git_clean, "disk": check_disk,
+}
+BASIC_NEEDS = ["git-clean", "gh", "docker", "disk"]
+
+
+def run_preflight(folder: Folder, basic: bool) -> tuple[list[dict], list[str]]:
+    needs: list[str] = list(BASIC_NEEDS)
+    if not basic:
+        needs += _as_list(folder.settings.get("needs"))
+        for t in folder.tasks():
+            needs += t.needs
+    ordered = list(dict.fromkeys(needs))
+    rows, secrets = [], []
+    for need in ordered:
+        kind, _, arg = need.partition(":")
+        fn = NEED_CHECKS.get(kind)
+        if not fn:
+            rows.append({"need": need, "status": "fail", "detail": "unknown need type"})
+            continue
+        status, detail = fn(arg, folder, secrets)
+        users = [t.id for t in folder.tasks() if need in t.needs] if not basic else []
+        rows.append({"need": need, "status": status, "detail": detail, "tasks": users})
+    return rows, secrets
+
+
+def write_preflight(folder: Folder, rows: list[dict], basic: bool) -> None:
+    path = folder.path / "PREFLIGHT.md"
+    text = path.read_text() if path.exists() else f"# Preflight — {folder.slug}\n"
+    start, end = "<!-- sdd:access:start -->", "<!-- sdd:access:end -->"
+    table = [start, f"_Checked {now()} by `sdd preflight{' --basic' if basic else ''}`. Values are never shown._", "",
+             "| Need | Status | Detail | Tasks |", "|---|---|---|---|"]
+    for r in rows:
+        table.append(f"| `{r['need']}` | {r['status']} | {r['detail']} | {', '.join(r.get('tasks') or []) or '—'} |")
+    table.append(end)
+    block = "\n".join(table)
+    if start in text and end in text:
+        text = text[:text.index(start)] + block + text[text.index(end) + len(end):]
+    else:
+        text = text.rstrip("\n") + "\n\n## Access and environment\n\n" + block + "\n"
+    path.write_text(text)
+
+
+# ---------------------------------------------------------------- resources
+
+def _listening_ports() -> set[int]:
+    ports: set[int] = set()
+    code, out = _run_quiet(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN"], timeout=15)
+    if code in (0, 1):
+        for m in re.finditer(r":(\d+) \(LISTEN\)", out):
+            ports.add(int(m.group(1)))
+    return ports
+
+
+def _memory() -> tuple[int | None, int | None]:
+    if sys.platform == "darwin":
+        code, total = _run_quiet(["sysctl", "-n", "hw.memsize"])
+        code2, vm = _run_quiet(["vm_stat"])
+        if code == 0 and code2 == 0:
+            page = int(re.search(r"page size of (\d+)", vm).group(1)) if "page size of" in vm else 4096
+            pages = sum(int(n) for n in re.findall(r"Pages (?:free|inactive|speculative):\s+(\d+)", vm))
+            return int(total.strip()), pages * page
+        return None, None
+    try:
+        info = dict(re.findall(r"^(\w+):\s+(\d+)", Path("/proc/meminfo").read_text(), re.M))
+        return int(info["MemTotal"]) * 1024, int(info["MemAvailable"]) * 1024
+    except (OSError, KeyError):
+        return None, None
+
+
+def free_ports(count: int, taken: set[int], start: int = 20000) -> list[int]:
+    found: list[int] = []
+    port = start
+    while len(found) < count and port < 65000:
+        if port not in taken:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                try:
+                    sock.bind(("127.0.0.1", port))
+                    found.append(port)
+                except OSError:
+                    pass
+        port += 1
+    return found
+
+
+def resources_data(slug: str | None, ports: int) -> dict:
+    containers = []
+    code, out = _run_quiet(["docker", "ps", "--format", "{{json .}}"], timeout=20)
+    docker_ports: set[int] = set()
+    if code == 0:
+        for line in out.splitlines():
+            try:
+                c = json.loads(line)
+            except ValueError:
+                continue
+            # The sdd.slug label must match exactly (slug "demo" is not "demo-api"); the name is
+            # only a fallback for unlabelled containers, and needs the "-" so "sdd-demo2" isn't ours.
+            slug_labels = [x.strip()[len("sdd.slug="):] for x in c.get("Labels", "").split(",")
+                           if x.strip().startswith("sdd.slug=")]
+            name = c.get("Names", "")
+            ours = bool(slug) and ((slug in slug_labels) if slug_labels
+                                   else (name == f"sdd-{slug}" or name.startswith(f"sdd-{slug}-")))
+            for m in re.finditer(r":(\d+)->", c.get("Ports", "")):
+                docker_ports.add(int(m.group(1)))
+            containers.append({"name": c.get("Names"), "image": c.get("Image"), "status": c.get("Status"),
+                               "ports": c.get("Ports"), "ours": ours})
+    listening = _listening_ports() | docker_ports
+    total_mem, free_mem = _memory()
+    disk_free = shutil.disk_usage(Path.cwd()).free
+    load = os.getloadavg()[0] if hasattr(os, "getloadavg") else None
+    cpus = os.cpu_count() or 1
+    low = []
+    if free_mem is not None and free_mem < MIN_FREE_MEM:
+        low.append("memory")
+    if disk_free < MIN_FREE_DISK:
+        low.append("disk")
+    if load is not None and load > cpus:
+        low.append("cpu")
+    return {
+        "docker_available": code == 0, "containers": containers,
+        "others_running": sum(1 for c in containers if not c["ours"]),
+        "ports_in_use": sorted(listening), "cpus": cpus, "load_1m": load,
+        "memory_total": total_mem, "memory_free": free_mem, "disk_free": disk_free,
+        "low_headroom": low, "suggested_project": f"sdd-{slug}" if slug else None,
+        "suggested_ports": free_ports(ports, listening),
+    }
+
+
+# ---------------------------------------------------------------- git helpers
+
+def worktree_path(repo_path: Path, slug: str, task_id: str) -> Path:
+    common = git(["rev-parse", "--git-common-dir"], repo_path).stdout.strip()
+    common_path = (repo_path / common).resolve() if not os.path.isabs(common) else Path(common)
+    return common_path / "sdd-worktrees" / slug / task_id
+
+
+def worktrees(repo_path: Path) -> dict[str, Path]:
+    """Map branch name → worktree path."""
+    out = git(["worktree", "list", "--porcelain"], repo_path).stdout
+    result, current = {}, None
+    for line in out.splitlines():
+        if line.startswith("worktree "):
+            current = Path(line[len("worktree "):])
+        elif line.startswith("branch refs/heads/") and current:
+            result[line[len("branch refs/heads/"):]] = current
+    return result
+
+
+def branch_exists(repo_path: Path, branch: str) -> bool:
+    return git(["show-ref", "--verify", "--quiet", f"refs/heads/{branch}"], repo_path, check=False).returncode == 0
+
+
+def guard_not_protected(branch: str) -> None:
+    if branch in PROTECTED_BRANCHES:
+        raise SddError(f"refusing to touch protected branch {branch!r}: that needs a PR and other people's approval", 3)
+
+
+# ---------------------------------------------------------------- commands
+
+def cmd_version(args) -> int:
+    print(VERSION)
+    return 0
+
+
+def _version_tuple(v: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in re.findall(r"\d+", v)[:3])
+
+
+def cmd_install(args) -> int:
+    repo = Path(args.repo).resolve()
+    specs = repo / "docs" / "specs"
+    kit = specs / "_kit"
+    current = (kit / "VERSION").read_text().strip() if (kit / "VERSION").exists() else None
+    if current and _version_tuple(current) >= _version_tuple(VERSION) and not args.force:
+        print(f"kit {current} already installed in {kit}")
+        return 0
+    kit.mkdir(parents=True, exist_ok=True)
+    for item in KIT_DIR.iterdir():
+        if item.name in ("tests", "__pycache__", ".pytest_cache") or item.name.startswith("."):
+            continue
+        target = kit / item.name
+        if item.is_dir():
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.copytree(item, target, ignore=shutil.ignore_patterns("__pycache__"))
+        else:
+            shutil.copy2(item, target)
+    shutil.copy2(KIT_DIR / "README.md", specs / "README.md")
+    (kit / "sdd").chmod(0o755)
+    print(f"kit {VERSION} installed in {kit}" + (f" (was {current})" if current else ""))
+    return 0
+
+
+def _template(name: str) -> Template:
+    path = KIT_DIR / "templates" / f"{name}.md"
+    if not path.exists():
+        raise SddError(f"template {name}.md not found in {path.parent}")
+    return Template(path.read_text())
+
+
+def cmd_new(args) -> int:
+    specs = find_specs_dir(args.specs)
+    if not SLUG_RE.match(args.slug):
+        raise SddError("slug must be lowercase letters, digits and hyphens")
+    for p in work_folders(specs):
+        if FOLDER_RE.match(p.name).group(2) == args.slug:
+            raise SddError(f"slug {args.slug!r} already used by {p.name}")
+    date = args.date or dt.date.today().isoformat()
+    folder = specs / f"{date}-{args.slug}"
+    folder.mkdir(parents=True)
+    values = {"slug": args.slug, "title": args.title or args.slug.replace("-", " ").capitalize(),
+              "date": date, "base": args.base, "size": args.size}
+    spec_text = _quote_header_value(_template("SPEC").safe_substitute(values), "title", values["title"])
+    (folder / "SPEC.md").write_text(spec_text)
+    (folder / "PREFLIGHT.md").write_text(_template("PREFLIGHT").safe_substitute(values))
+    (folder / "LOG.md").write_text(f"# Log — {args.slug}\n\n")
+    Folder(folder).log("spec", f"folder created (base: {values['base']}, size: {args.size})")
+    print(folder)
+    return 0
+
+
+def _slugify(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40] or "task"
+
+
+def cmd_add(args) -> int:
+    folder = resolve_folder(find_specs_dir(args.specs), args.folder)
+    if not ID_RE.match(args.id):
+        raise SddError(f"bad task id {args.id!r}")
+    if any(t.id == args.id for t in folder.tasks()):
+        raise SddError(f"task {args.id} already exists")
+    values = {"id": args.id, "title": args.title, "kind": args.kind,
+              "deps": ", ".join(_split_csv(args.deps)), "owns": ", ".join(_split_csv(args.owns)),
+              "needs": ", ".join(_split_csv(args.needs)), "repo": args.repo,
+              "verify": _yaml_quote(args.verify or ""),
+              "review": args.review or ("light" if args.kind == "work" else "none")}
+    path = folder.path / "tasks" / f"{args.id}-{_slugify(args.title)}.md"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(_quote_header_value(_template("TASK").safe_substitute(values), "title", args.title))
+    print(path)
+    return 0
+
+
+def _quote_header_value(text: str, key: str, value: str) -> str:
+    """Quote `key: value` in a rendered template's header when it wouldn't read back as is
+    (a title like "Fix #42" would otherwise lose everything after the #)."""
+    if parse_value(value) == value:
+        return text
+    return text.replace(f"\n{key}: {value}\n", f"\n{key}: {_yaml_quote(value)}\n", 1)
+
+
+def _yaml_quote(value: str) -> str:
+    if '"' not in value:
+        return f'"{value}"'
+    if "'" not in value:
+        return f"'{value}'"
+    raise SddError("a verify command can't contain both quote types; put it in a script")
+
+
+def _split_csv(value: str | None) -> list[str]:
+    return [v.strip() for v in (value or "").split(",") if v.strip()]
+
+
+def cmd_list(args) -> int:
+    specs = find_specs_dir(args.specs)
+    rows = []
+    for p in work_folders(specs):
+        try:
+            f = Folder(p)
+            tasks = f.tasks()
+            entries = f.log_entries()
+        except SddError as exc:
+            rows.append({"folder": p.name, "error": str(exc)})
+            continue
+        rows.append({"folder": p.name, "slug": f.slug, "title": f.settings.get("title"),
+                     "status": f.settings.get("status"), "created": str(f.settings.get("created")),
+                     "tasks_done": sum(1 for t in tasks if t.status in ("done", "skipped")),
+                     "tasks_total": len(tasks),
+                     "last": f"{entries[-1][0]:%Y-%m-%d %H:%M} {entries[-1][2]}" if entries else ""})
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return 0
+    if not rows:
+        print(f"no work folders in {specs}")
+    for r in rows:
+        if "error" in r:
+            print(f"{r['folder']}  ERROR {r['error']}")
+        else:
+            done = f"{r['tasks_done']}/{r['tasks_total']}"
+            print(f"{r['folder']:<40} {str(r['status']):<10} {done:<6} {r['title']}  · {r['last']}")
+    return 0
+
+
+def cmd_check(args) -> int:
+    folder = resolve_folder(find_specs_dir(args.specs), args.folder)
+    errors, warnings = check_folder(folder)
+    if args.json:
+        print(json.dumps({"folder": str(folder.path), "errors": errors, "warnings": warnings}, indent=2))
+    else:
+        for e in errors:
+            print(f"error: {e}")
+        for w in warnings:
+            print(f"warning: {w}")
+        print(f"{folder.path.name}: {len(errors)} error(s), {len(warnings)} warning(s)")
+    return 1 if errors else 0
+
+
+def cmd_status(args) -> int:
+    folder = resolve_folder(find_specs_dir(args.specs), args.folder)
+    data = status_data(folder)
+    if args.json:
+        print(json.dumps(data, indent=2, default=str))
+        return 0
+    print(f"{data['slug']} — {data['title']}  [{data['spec_status']} · mode {data['run_mode']} · "
+          f"{data['base_branch']} ← {data['integration_branch']}]")
+    by_wave: dict[int, list[dict]] = {}
+    for t in data["tasks"]:
+        by_wave.setdefault(t["wave"], []).append(t)
+    for wave in sorted(by_wave):
+        for t in by_wave[wave]:
+            took = f" ({_fmt_duration(t['elapsed'])})" if t["elapsed"] else ""
+            print(f"  wave {wave}  {t['id']:<8} {t['kind']:<6} {t['status']:<8} {t['title']}{took}")
+    print(f"next: {', '.join(data['runnable']) or '—'}"
+          + (f"   gates waiting for a human: {', '.join(data['pending_gates'])}" if data["pending_gates"] else ""))
+    if data["waves"]:
+        print("waves: " + " · ".join(
+            f"{w} {'running' if v['running'] else _fmt_duration(v['seconds'])}" for w, v in data["waves"].items()))
+    print(f"created {data['created']} · last: {data['last_log'] or '—'}")
+    return 0
+
+
+def cmd_next(args) -> int:
+    folder = resolve_folder(find_specs_dir(args.specs), args.folder)
+    tasks = folder.tasks()
+    waves = compute_waves(tasks) if tasks else {}
+    ready = runnable(tasks)
+    payload = {
+        "folder": str(folder.path), "slug": folder.slug, "settings": folder.settings,
+        "integration_branch": folder.integration_branch(),
+        "runnable": [dict(t.as_dict(), wave=waves[t.id], branch=folder.task_branch(t.id)) for t in ready],
+        "gates": [t.id for t in ready if t.kind == "gate"],
+        "done": bool(tasks) and all(t.status in ("done", "skipped") for t in tasks),
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, default=str))
+    else:
+        for t in payload["runnable"]:
+            print(f"{t['id']}\t{t['kind']}\twave {t['wave']}\t{t['branch']}\t{t['title']}")
+    return 0
+
+
+def _node(tid: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]", "_", tid)
+
+
+def cmd_graph(args) -> int:
+    folder = resolve_folder(find_specs_dir(args.specs), args.folder)
+    tasks = folder.tasks()
+    lines = ["graph TD"]
+    for t in tasks:
+        label = f"{t.id} · {t.title}".replace('"', "'")
+        shape = {"work": f'["{label}"]', "verify": f'(["{label}"])', "gate": f'{{{{"{label}"}}}}'}.get(t.kind, f'["{label}"]')
+        cls = f":::{t.status}" if t.status in ("done", "doing", "blocked") else ""
+        lines.append(f"  {_node(t.id)}{shape}{cls}")
+    for t in tasks:
+        for d in t.deps:
+            lines.append(f"  {_node(d)} --> {_node(t.id)}")
+    lines += ["  classDef done fill:#d3f9d8,stroke:#2b8a3e", "  classDef doing fill:#fff3bf,stroke:#e67700",
+              "  classDef blocked fill:#ffe3e3,stroke:#c92a2a"]
+    print("\n".join(lines))
+    return 0
+
+
+def cmd_set(args) -> int:
+    folder = resolve_folder(find_specs_dir(args.specs), args.folder)
+    if args.status not in TASK_STATUSES:
+        raise SddError(f"status must be one of {TASK_STATUSES}")
+    task = folder.task(args.id)
+    if args.status == "done" and task.kind in ("work", "verify") and not (folder.path / "evidence" / f"{task.id}.md").exists():
+        raise SddError(f"{task.id}: no evidence/{task.id}.md; run `sdd verify {task.id}` first")
+    task.path.write_text(set_frontmatter_value(task.path.read_text(), "status", args.status))
+    print(folder.log(args.phase, f"{task.id} → {args.status}" + (f" — {args.note}" if args.note else "")))
+    return 0
+
+
+def cmd_spec_status(args) -> int:
+    folder = resolve_folder(find_specs_dir(args.specs), args.folder)
+    if args.status not in SPEC_STATUSES:
+        raise SddError(f"status must be one of {SPEC_STATUSES}")
+    spec = folder.path / "SPEC.md"
+    spec.write_text(set_frontmatter_value(spec.read_text(), "status", args.status))
+    print(folder.log(args.phase or args.status, f"spec → {args.status}" + (f" — {args.note}" if args.note else "")))
+    return 0
+
+
+def cmd_log(args) -> int:
+    folder = resolve_folder(find_specs_dir(args.specs), args.folder)
+    print(folder.log(args.phase, args.event))
+    return 0
+
+
+def cmd_verify(args) -> int:
+    folder = resolve_folder(find_specs_dir(args.specs), args.folder)
+    task = folder.task(args.id)
+    if not task.verify:
+        raise SddError(f"{task.id} has no verify command")
+    repo_path = folder.repo_path(task.repo)
+    if args.cwd:
+        cwd = Path(args.cwd).resolve()
+    elif task.kind == "work" and worktree_path(repo_path, folder.slug, task.id).exists():
+        cwd = worktree_path(repo_path, folder.slug, task.id)
+    else:
+        cwd = worktrees(repo_path).get(folder.integration_branch(), repo_path)
+    started = time.time()
+    try:
+        proc = subprocess.run(task.verify, shell=True, cwd=str(cwd), capture_output=True, text=True,
+                              timeout=args.timeout)
+        code, output = proc.returncode, (proc.stdout or "") + (proc.stderr or "")
+    except subprocess.TimeoutExpired as exc:
+        partial = exc.stdout or ""
+        if isinstance(partial, bytes):
+            partial = partial.decode(errors="replace")
+        code, output = 124, f"timed out after {args.timeout}s\n{partial}"
+    duration = time.time() - started
+    # Redact every env need declared in the folder, including values read from `NAME@file`:
+    # an integration check can print secrets that other tasks declared.
+    env_needs = [n[len("env:"):] for t in folder.tasks() for n in t.needs if n.startswith("env:")]
+    env_needs += [n[len("env:"):] for n in _as_list(folder.settings.get("needs")) if n.startswith("env:")]
+    env_names = {n.partition("@")[0] for n in env_needs}
+    file_values = [_env_file_value(folder.repo_root / f, name) for name, _, f in (n.partition("@") for n in env_needs) if f]
+    output = redact(output, secret_values(env_names, [v for v in file_values if v]))
+    tail = "\n".join(output.rstrip().split("\n")[-args.tail:])
+    head = git(["rev-parse", "--short", "HEAD"], cwd, check=False).stdout.strip()
+    branch = git(["rev-parse", "--abbrev-ref", "HEAD"], cwd, check=False).stdout.strip()
+    # Verification must be of committed work: a pass on uncommitted files proves nothing about the branch.
+    uncommitted = [line[3:] for line in git(["status", "--porcelain"], cwd, check=False).stdout.splitlines()
+                   if not line[3:].startswith("docs/specs/")]
+    if uncommitted:
+        print(f"warning: uncommitted changes in {cwd}: {', '.join(uncommitted[:5])}", file=sys.stderr)
+    evidence = folder.path / "evidence" / f"{task.id}.md"
+    evidence.parent.mkdir(exist_ok=True)
+    if not evidence.exists():
+        evidence.write_text(_template("EVIDENCE").safe_substitute({"id": task.id, "title": task.title}))
+    fence = "~~~~"
+    section = (f"\n## Verify run — {now()}\n\n- command: `{task.verify}`\n- cwd: `{cwd}`\n"
+               f"- commit: `{head}` on `{branch}`"
+               + (f" — **uncommitted changes: {', '.join(uncommitted[:5])}**" if uncommitted else "")
+               + f"\n- exit: **{code}** · {duration:.1f}s\n\n"
+               f"{fence}text\n{tail}\n{fence}\n")
+    evidence.write_text(evidence.read_text().rstrip("\n") + "\n" + section)
+    folder.log("verify", f"{task.id} verify exit {code} ({duration:.0f}s)")
+    print(tail)
+    print(f"\n{task.id}: exit {code} · evidence/{task.id}.md")
+    return 0 if code == 0 else 1
+
+
+def cmd_worktree(args) -> int:
+    folder = resolve_folder(find_specs_dir(args.specs), args.folder)
+    task = folder.task(args.id)
+    repo_path = folder.repo_path(task.repo)
+    integration = folder.integration_branch()
+    branch = folder.task_branch(task.id)
+    guard_not_protected(integration)
+    guard_not_protected(branch)
+    path = worktree_path(repo_path, folder.slug, task.id)
+    existing = worktrees(repo_path)
+    if branch in existing:
+        print(existing[branch])
+        return 0
+    if not branch_exists(repo_path, integration):
+        raise SddError(f"integration branch {integration!r} does not exist in {repo_path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if branch_exists(repo_path, branch):
+        git(["worktree", "add", "--quiet", str(path), branch], repo_path)
+    else:
+        git(["worktree", "add", "--quiet", "-b", branch, str(path), integration], repo_path)
+    folder.log("run", f"{task.id} worktree on {branch}")
+    print(path)
+    return 0
+
+
+def last_verify_run(evidence: Path) -> tuple[int | None, str | None, bool]:
+    """(exit, commit, uncommitted) of the most recent `sdd verify` section, or Nones."""
+    if not evidence.exists():
+        return None, None, False
+    runs = evidence.read_text().split("\n## Verify run — ")[1:]
+    if not runs:
+        return None, None, False
+    last = runs[-1]
+    commit = re.search(r"^- commit: `([0-9a-f]*)`", last, re.M)
+    code = re.search(r"^- exit: \*\*(-?\d+)\*\*", last, re.M)
+    return (int(code.group(1)) if code else None, commit.group(1) if commit else None,
+            "uncommitted changes" in last.split("\n- exit:")[0])
+
+
+def cmd_merge(args) -> int:
+    folder = resolve_folder(find_specs_dir(args.specs), args.folder)
+    task = folder.task(args.id)
+    status = {t.id: t.status for t in folder.tasks()}
+    waiting = [d for d in task.deps if status.get(d) not in ("done", "skipped")]
+    if waiting:
+        raise SddError(f"{task.id} depends on {', '.join(f'{d} ({status.get(d)})' for d in waiting)}; "
+                       "merge and finish dependencies first")
+    repo_path = folder.repo_path(task.repo)
+    integration = folder.integration_branch()
+    guard_not_protected(integration)
+    branch = folder.task_branch(task.id)
+    if not branch_exists(repo_path, branch):
+        raise SddError(f"task branch {branch!r} does not exist in {repo_path}; nothing to merge")
+    tip = git(["rev-parse", branch], repo_path).stdout.strip()
+    code, commit, uncommitted = last_verify_run(folder.path / "evidence" / f"{task.id}.md")
+    if code != 0 or not commit or not tip.startswith(commit) or uncommitted:
+        found = "no verify run" if code is None else (
+            f"last verify exit {code} on `{commit}`" + (" with uncommitted changes" if uncommitted else ""))
+        raise SddError(f"{task.id} is not verified at the tip of {branch} ({tip[:7]}): {found}; "
+                       f"run `sdd verify {task.id}` on the committed work first")
+    target = worktrees(repo_path).get(integration)
+    if not target:
+        raise SddError(f"{integration!r} is not checked out anywhere in {repo_path}; check it out first")
+    # The orchestrator's own bookkeeping (status, log, evidence) sits uncommitted in the work
+    # folder between merges; tasks never touch it, so only changes elsewhere block a merge.
+    folder_rel = folder.path.resolve().relative_to(target.resolve()).as_posix() + "/" \
+        if target.resolve() in folder.path.resolve().parents else None
+    dirty = [line[3:] for line in git(["status", "--porcelain", "--untracked-files=no"], target).stdout.splitlines()]
+    blocking = [p for p in dirty if not (folder_rel and p.startswith(folder_rel))]
+    if blocking:
+        raise SddError(f"{target} has uncommitted changes outside the work folder ({', '.join(blocking[:5])}); "
+                       "commit them before merging")
+    proc = git(["merge", "--no-ff", "-m", f"Merge {branch}: {task.title} ({task.id})", branch], target, check=False)
+    if proc.returncode != 0:
+        conflicts = git(["diff", "--name-only", "--diff-filter=U"], target, check=False).stdout.split()
+        git(["merge", "--abort"], target, check=False)
+        folder.log("run", f"{task.id} merge conflict: {', '.join(conflicts) or proc.stderr.strip()[:120]}")
+        raise SddError(f"merge of {branch} conflicted ({', '.join(conflicts)}); aborted", 2)
+    folder.log("run", f"{task.id} merged into {integration}")
+    if args.cleanup:
+        wt = worktrees(repo_path).get(branch)
+        if wt:
+            cwd = Path.cwd().resolve()
+            if cwd == wt.resolve() or wt.resolve() in cwd.parents:
+                # The merge already happened; only the cleanup is skipped.
+                print(f"warning: merged, but not removing {wt}: it is the current working directory", file=sys.stderr)
+                print(f"{task.id}: merged {branch} into {integration}")
+                return 0
+            git(["worktree", "remove", str(wt)], repo_path)
+        git(["branch", "-d", branch], repo_path, check=False)
+    print(f"{task.id}: merged {branch} into {integration}")
+    return 0
+
+
+def cmd_push(args) -> int:
+    folder = resolve_folder(find_specs_dir(args.specs), args.folder)
+    policy = str(folder.settings.get("push") or "none")
+    if args.id:
+        task = folder.task(args.id)
+        repo_path, branch, kind = folder.repo_path(task.repo), folder.task_branch(task.id), "task"
+    else:
+        repo = args.repo or "."
+        repo_path, branch, kind = folder.repo_path(repo), folder.integration_branch(), "integration"
+    guard_not_protected(branch)
+    if policy == "none" or (policy == "integration" and kind == "task"):
+        print(f"push policy is {policy!r}: not pushing {branch}")
+        return 0
+    cmd = ["push", "--quiet", "-u", "origin", branch]
+    if args.lease:
+        if kind != "task":
+            raise SddError("--lease is only allowed for task branches; the integration branch is never force-pushed")
+        cmd.insert(1, "--force-with-lease")
+    git(cmd, repo_path, timeout=120)
+    folder.log("run", f"pushed {branch}")
+    print(f"pushed {branch}")
+    return 0
+
+
+def cmd_preflight(args) -> int:
+    folder = resolve_folder(find_specs_dir(args.specs), args.folder)
+    rows, _secrets = run_preflight(folder, args.basic)
+    if args.write:
+        write_preflight(folder, rows, args.basic)
+        problems = ", ".join(f"{r['need']}={r['status']}" for r in rows if r["status"] != "ok")
+        folder.log("preflight", f"{'basic' if args.basic else 'full'}: {problems or 'all ok'}")
+    if args.json:
+        print(json.dumps(rows, indent=2))
+    else:
+        for r in rows:
+            print(f"{r['status']:<8} {r['need']:<40} {r['detail']}")
+    return 1 if any(r["status"] in ("missing", "fail") for r in rows) else 0
+
+
+def cmd_resources(args) -> int:
+    slug = args.slug
+    if not slug:
+        try:
+            slug = resolve_folder(find_specs_dir(args.specs), args.folder).slug
+        except SddError:
+            slug = None
+    data = resources_data(slug, args.ports)
+    if args.json:
+        print(json.dumps(data, indent=2))
+        return 0
+    gib = lambda n: f"{n / 1024 ** 3:.1f} GiB" if n is not None else "?"
+    print(f"cpu {data['cpus']} cores, load {data['load_1m']:.2f}" if data["load_1m"] is not None else f"cpu {data['cpus']} cores")
+    print(f"memory free {gib(data['memory_free'])} of {gib(data['memory_total'])} · disk free {gib(data['disk_free'])}")
+    if data["docker_available"]:
+        print(f"containers: {len(data['containers'])} running, {data['others_running']} not ours — do not touch them")
+        for c in data["containers"]:
+            print(f"  {'ours ' if c['ours'] else 'other'}  {c['name']:<40} {c['image']:<40} {c['ports']}")
+    else:
+        print("docker: not reachable")
+    print(f"suggested compose project: {data['suggested_project'] or 'sdd-<slug>'} · free ports: "
+          f"{', '.join(map(str, data['suggested_ports']))}")
+    if data["low_headroom"]:
+        print(f"LOW HEADROOM ({', '.join(data['low_headroom'])}): run heavy tasks serially")
+    return 0
+
+
+def cmd_settings(args) -> int:
+    folder = resolve_folder(find_specs_dir(args.specs), args.folder)
+    data = dict(folder.settings, folder=str(folder.path), repo_root=str(folder.repo_root))
+    if args.json:
+        print(json.dumps(data, indent=2, default=str))
+    else:
+        for k, v in data.items():
+            print(f"{k}: {v}")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="sdd", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--specs", help="docs/specs directory (default: next to this kit, or <git root>/docs/specs)")
+    parser.add_argument("--folder", help="work folder slug or path (default: the one you're in, else the newest open one)")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    def add(name, fn, help_text):
+        p = sub.add_parser(name, help=help_text)
+        p.set_defaults(fn=fn)
+        return p
+
+    add("version", cmd_version, "print the kit version")
+    p = add("install", cmd_install, "install or upgrade the kit into <repo>/docs/specs/_kit")
+    p.add_argument("repo")
+    p.add_argument("--force", action="store_true")
+    p = add("new", cmd_new, "create a dated work folder")
+    p.add_argument("slug")
+    p.add_argument("--title")
+    p.add_argument("--base", required=True, help="base branch — ask whether it is main or dev")
+    p.add_argument("--size", choices=["lite", "full"], default="full")
+    p.add_argument("--date", help="override the folder date (YYYY-MM-DD)")
+    p = add("add", cmd_add, "add a task file from the template")
+    p.add_argument("id")
+    p.add_argument("title")
+    p.add_argument("--kind", choices=KINDS, default="work")
+    p.add_argument("--deps", help="comma-separated task ids")
+    p.add_argument("--owns", help="comma-separated paths or globs")
+    p.add_argument("--needs", help="comma-separated needs")
+    p.add_argument("--verify", help="verify command")
+    p.add_argument("--repo", default=".")
+    p.add_argument("--review", choices=REVIEWS, help="work tasks default to light; none merges on verify alone")
+    p = add("list", cmd_list, "list all work folders")
+    p.add_argument("--json", action="store_true")
+    p = add("check", cmd_check, "validate a work folder (exit 1 on errors)")
+    p.add_argument("--json", action="store_true")
+    p = add("status", cmd_status, "tasks by wave, next runnable, gates, timing")
+    p.add_argument("--json", action="store_true")
+    p = add("next", cmd_next, "runnable tasks now")
+    p.add_argument("--json", action="store_true")
+    add("graph", cmd_graph, "mermaid dependency graph")
+    p = add("set", cmd_set, "set a task's status and log it")
+    p.add_argument("id")
+    p.add_argument("status")
+    p.add_argument("--note")
+    p.add_argument("--phase", default="run")
+    p = add("spec-status", cmd_spec_status, "set SPEC.md status and log it")
+    p.add_argument("status")
+    p.add_argument("--note")
+    p.add_argument("--phase")
+    p = add("log", cmd_log, "append a timeline entry")
+    p.add_argument("event")
+    p.add_argument("--phase", default="note")
+    p = add("verify", cmd_verify, "run a task's verify command and record evidence")
+    p.add_argument("id")
+    p.add_argument("--cwd")
+    p.add_argument("--timeout", type=int, default=1800)
+    p.add_argument("--tail", type=int, default=80)
+    p = add("worktree", cmd_worktree, "create (or print) the task's worktree off the integration branch")
+    p.add_argument("id")
+    p = add("merge", cmd_merge, "merge a verified task branch into the integration branch (--no-ff)")
+    p.add_argument("id")
+    p.add_argument("--cleanup", action="store_true", help="remove the worktree and the local task branch")
+    p = add("push", cmd_push, "push a task branch (id) or the integration branch, per the push policy")
+    p.add_argument("id", nargs="?")
+    p.add_argument("--repo")
+    p.add_argument("--lease", action="store_true", help="--force-with-lease (task branches only)")
+    p = add("preflight", cmd_preflight, "check access and environment; never prints secret values")
+    p.add_argument("--basic", action="store_true")
+    p.add_argument("--write", action="store_true", help="update PREFLIGHT.md")
+    p.add_argument("--json", action="store_true")
+    p = add("resources", cmd_resources, "machine headroom, containers (ours vs others), free ports")
+    p.add_argument("--slug")
+    p.add_argument("--ports", type=int, default=3)
+    p.add_argument("--json", action="store_true")
+    p = add("settings", cmd_settings, "print the SPEC settings block")
+    p.add_argument("--json", action="store_true")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        return args.fn(args)
+    except SddError as exc:
+        print(f"sdd: {exc}", file=sys.stderr)
+        return exc.code
+
+
+if __name__ == "__main__":
+    sys.exit(main())
