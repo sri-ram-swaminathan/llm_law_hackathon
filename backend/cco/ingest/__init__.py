@@ -278,6 +278,12 @@ def ingest_bundle(
     for a in arts:
         session.add(ArtifactRow(id=a.id, release_id=release_id, data=a.model_dump(mode="json")))
     session.flush()
+    try:  # semantic index of the release (T24); best effort, never fails ingest
+        from ..search import index_on_ingest
+
+        index_on_ingest(session, release_id, base)
+    except Exception:  # noqa: BLE001
+        pass
     return release, arts
 
 
