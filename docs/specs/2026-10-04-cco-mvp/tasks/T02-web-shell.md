@@ -3,12 +3,12 @@ id: T02
 title: Web shell, Overview and Findings list
 kind: work
 deps: [T01]
-owns: [frontend/package.json, frontend/pnpm-lock.yaml, frontend/index.html, frontend/vite.config.ts, frontend/tsconfig*.json, frontend/tailwind.config.*, frontend/postcss.config.*, frontend/components.json, frontend/playwright.config.ts, frontend/src/main.tsx, frontend/src/app/**, frontend/src/components/**, frontend/src/styles/**, frontend/src/lib/**, frontend/src/api/client.ts, frontend/src/features/overview/**, frontend/src/features/findings/**, frontend/src/features/*/index.tsx, frontend/e2e/golden-path.spec.ts]
+owns: [frontend/.gitignore, frontend/src/vite-env.d.ts, frontend/package.json, frontend/pnpm-lock.yaml, frontend/index.html, frontend/vite.config.ts, frontend/tsconfig*.json, frontend/tailwind.config.*, frontend/postcss.config.*, frontend/components.json, frontend/playwright.config.ts, frontend/src/main.tsx, frontend/src/app/**, frontend/src/components/**, frontend/src/styles/**, frontend/src/lib/**, frontend/src/api/client.ts, frontend/src/features/overview/**, frontend/src/features/findings/**, frontend/src/features/*/index.tsx, frontend/e2e/golden-path.spec.ts]
 repo: .
 needs: [cmd:pnpm]
 verify: cd frontend && pnpm install --frozen-lockfile=false && pnpm build
 review: none
-status: todo
+status: done
 ---
 
 # T02 — Web shell, Overview and Findings list

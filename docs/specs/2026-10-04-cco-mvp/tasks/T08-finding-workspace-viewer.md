@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:pnpm]
 verify: cd frontend && pnpm build
 review: none
-status: todo
+status: doing
 ---
 
 # T08 — Finding workspace, document/code viewer with highlights, legal drawer

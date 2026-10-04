@@ -47,3 +47,47 @@
 - 2026-10-04 14:58 · run · pushed ft/cco-mvp-t01
 - 2026-10-04 14:58 · run · T01 merged into ft/cco-mvp
 - 2026-10-04 14:58 · run · T01 → done — merged; contracts frozen
+- 2026-10-04 14:58 · run · pushed ft/cco-mvp
+- 2026-10-04 14:58 · preflight · full: git-clean=warn
+- 2026-10-04 14:58 · run · T02 worktree on ft/cco-mvp-t02
+- 2026-10-04 14:58 · run · T02 → doing
+- 2026-10-04 14:58 · run · T03 worktree on ft/cco-mvp-t03
+- 2026-10-04 14:58 · run · T03 → doing
+- 2026-10-04 14:58 · run · T04 worktree on ft/cco-mvp-t04
+- 2026-10-04 14:58 · run · T04 → doing
+- 2026-10-04 14:58 · run · T05 worktree on ft/cco-mvp-t05
+- 2026-10-04 14:58 · run · T05 → doing
+- 2026-10-04 14:58 · run · T06 worktree on ft/cco-mvp-t06
+- 2026-10-04 14:58 · run · T06 → doing
+- 2026-10-04 15:02 · verify · T05 verify exit 0 (0s)
+- 2026-10-04 15:02 · run · pushed ft/cco-mvp-t05
+- 2026-10-04 15:02 · run · T05 merged into ft/cco-mvp
+- 2026-10-04 15:02 · run · T05 → done — merged
+- 2026-10-04 15:03 · verify · T03 verify exit 0 (1s)
+- 2026-10-04 15:03 · run · pushed ft/cco-mvp-t03
+- 2026-10-04 15:03 · run · T03 merged into ft/cco-mvp
+- 2026-10-04 15:03 · run · T03 → done — merged
+- 2026-10-04 15:03 · run · T11 worktree on ft/cco-mvp-t11
+- 2026-10-04 15:03 · run · T11 → doing
+- 2026-10-04 15:03 · run · T12 worktree on ft/cco-mvp-t12
+- 2026-10-04 15:03 · run · T12 → doing
+- 2026-10-04 15:04 · verify · T04 verify exit 0 (1s)
+- 2026-10-04 15:04 · run · pushed ft/cco-mvp-t04
+- 2026-10-04 15:04 · run · T04 merged into ft/cco-mvp
+- 2026-10-04 15:04 · run · T04 → done — merged
+- 2026-10-04 15:06 · verify · T02 verify exit 0 (2s)
+- 2026-10-04 15:06 · run · pushed ft/cco-mvp-t02
+- 2026-10-04 15:06 · run · T02 merged into ft/cco-mvp
+- 2026-10-04 15:06 · run · T02 → done — merged
+- 2026-10-04 15:06 · run · T08 worktree on ft/cco-mvp-t08
+- 2026-10-04 15:06 · run · T08 → doing
+- 2026-10-04 15:06 · run · T09 worktree on ft/cco-mvp-t09
+- 2026-10-04 15:06 · run · T09 → doing
+- 2026-10-04 15:06 · verify · T06 verify exit 0 (1s)
+- 2026-10-04 15:06 · run · pushed ft/cco-mvp-t06
+- 2026-10-04 15:06 · run · T06 merged into ft/cco-mvp
+- 2026-10-04 15:06 · run · T06 → done — merged; live spike 3/3 x3
+- 2026-10-04 15:06 · run · T10 worktree on ft/cco-mvp-t10
+- 2026-10-04 15:06 · run · T10 → doing
+- 2026-10-04 15:06 · run · T08 → doing
+- 2026-10-04 15:06 · run · T09 → doing

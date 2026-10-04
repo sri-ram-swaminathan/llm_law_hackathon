@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv]
 verify: cd backend && uv run pytest tests/test_api_basic.py tests/test_gate.py -q
 review: none
-status: todo
+status: done
 ---
 
 # T03 — FastAPI core, DB, seed, token and gate

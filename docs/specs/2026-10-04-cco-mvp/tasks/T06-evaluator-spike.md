@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv, env:MISTRAL_API_KEY@.env]
 verify: cd backend && uv run pytest tests/test_locator.py tests/test_evaluator.py -q
 review: none
-status: todo
+status: done
 ---
 
 # T06 — Evaluator agent, quote locator and `cco spike`

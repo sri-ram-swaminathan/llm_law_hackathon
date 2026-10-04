@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv, env:MISTRAL_API_KEY@.env]
 verify: cd backend && uv run pytest tests/test_legal.py -q -m "not integration"
 review: none
-status: todo
+status: done
 ---
 
 # T04 — Legal layer: CELLAR, curated cache, guidance, embeddings

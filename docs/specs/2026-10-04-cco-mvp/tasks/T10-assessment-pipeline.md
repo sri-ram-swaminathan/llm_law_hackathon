@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv]
 verify: cd backend && uv run pytest tests/test_pipeline.py tests/test_validation.py tests/test_traceability.py -q
 review: none
-status: todo
+status: doing
 ---
 
 # T10 — Assessment pipeline, run lock and model queue

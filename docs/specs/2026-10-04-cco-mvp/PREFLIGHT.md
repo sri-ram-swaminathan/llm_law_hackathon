@@ -18,14 +18,14 @@
 ## Access and environment
 
 <!-- sdd:access:start -->
-_Checked 2026-10-04 14:48 by `sdd preflight`. Values are never shown._
+_Checked 2026-10-04 14:58 by `sdd preflight`. Values are never shown._
 
 | Need | Status | Detail | Tasks |
 |---|---|---|---|
 | `git-clean` | warn | uncommitted changes in . | — |
 | `gh` | ok | gh authenticated | G1, G3, G4 |
 | `docker` | ok | docker 28.4.0, 4 containers running (not ours unless labelled) | V2, VA |
-| `disk` | ok | 67.7 GiB free | — |
+| `disk` | ok | 68.1 GiB free | — |
 | `env:MISTRAL_API_KEY@.env` | ok | MISTRAL_API_KEY set in .env (value not shown) | T04, T06, V2, VA |
 | `cmd:uv` | ok | uv on PATH | T01, T03, T04, T05, T06, T07, T10, T11, T12, T13, T14, T15, T16, T18, V2, VA |
 | `cmd:pnpm` | ok | pnpm on PATH | T01, T02, T08, T09, T17, T19, V2, VA |

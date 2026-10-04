@@ -8,7 +8,7 @@ repo: .
 needs: [cmd:uv]
 verify: cd backend && uv run pytest tests/test_pack.py -q
 review: none
-status: todo
+status: done
 ---
 
 # T05 — Requirement pack (W1–W8, C1–C2) and scoper
