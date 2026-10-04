@@ -187,9 +187,12 @@ def baseline_from_views(version: str, views: list[FindingView]) -> Baseline:
 def _engine_error(findings: list[Finding], asm: Assessment) -> str | None:
     if asm.status != "completed":
         return f"assessment {asm.status}"
-    bad = [f for f in findings if any(n.startswith("evaluation error") for n in f.validation_notes)]
-    if bad:
-        return f"model evaluation failed for {len(bad)} requirement(s): {bad[0].validation_notes[0][:200]}"
+    # A single failed evaluation is already degraded to `uncertain` and counts in the gate (SPEC §6.12).
+    # Only report an engine error when no requirement could be evaluated at all (e.g. Mistral unavailable).
+    evaluated = [f for f in findings if f.conclusion != "not_applicable"]
+    bad = [f for f in evaluated if any(n.startswith("evaluation error") for n in f.validation_notes)]
+    if evaluated and len(bad) == len(evaluated):
+        return f"model evaluation failed for all {len(bad)} requirement(s): {bad[0].validation_notes[0][:200]}"
     return None
 
 
