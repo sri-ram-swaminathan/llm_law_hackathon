@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m cco.demo")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("reset", help="restore the snapshot (fixtures when there is none) into CCO_DATABASE_URL")
-    p.add_argument("--snapshot", type=Path, default=SNAPSHOT_DIR)
+    p.add_argument("--snapshot", type=Path, default=None, help="default $CCO_DEMO_DIR/snapshot")
     p.set_defaults(fn=cmd_reset)
     p = sub.add_parser("accept")
     p.add_argument("result", type=Path)

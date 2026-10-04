@@ -10,6 +10,7 @@ nothing is presented as a CI run.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -32,7 +33,18 @@ from ..models import (
 )
 from ..seed import PRODUCT, PROFILE
 
-SNAPSHOT_DIR = config.REPO_ROOT / "demo" / "snapshot"
+
+
+def demo_dir() -> Path:
+    """Root of the demo bundles + snapshot; CCO_DEMO_DIR lets Docker mount it (default <repo>/demo)."""
+    return Path(os.environ.get("CCO_DEMO_DIR") or config.REPO_ROOT / "demo")
+
+
+def default_snapshot_dir() -> Path:
+    return demo_dir() / "snapshot"
+
+
+SNAPSHOT_DIR = config.REPO_ROOT / "demo" / "snapshot"  # repo default (CLI); runtime code uses snapshot_dir()
 REPO = "RomanGrebnev/FinTechProto"
 W8 = "AI-TRANSPARENCY-01"
 # ReleaseSource is seed|ui|ci: a restored snapshot is "seed" (never "ci": there is no real CI run behind it).
@@ -47,7 +59,7 @@ def _j(m) -> dict:
 
 
 def load_manifest(snapshot_dir: Path | None = None) -> dict | None:
-    p = (snapshot_dir or SNAPSHOT_DIR) / "MANIFEST.json"
+    p = (snapshot_dir or default_snapshot_dir()) / "MANIFEST.json"
     return json.loads(p.read_text("utf-8")) if p.is_file() else None
 
 
@@ -74,14 +86,15 @@ def _confirm_profile(s: Session) -> None:
 
 def ingest_release(s: Session, rel: dict, *, source: str) -> Release:
     """Ingest a manifest release's bundle with its real provenance (FinTechProto ref + commit)."""
-    release, _ = ingest_bundle(s, config.REPO_ROOT / rel["bundle"], rel["version"], source=source,
+    bundle = demo_dir() / Path(rel["bundle"]).relative_to("demo")  # manifest paths are repo-relative
+    release, _ = ingest_bundle(s, bundle, rel["version"], source=source,
                                git_sha=rel["commit"], branch=rel["ref"])
     return release
 
 
 def restore(s: Session, snapshot_dir: Path | None = None, exclude: list[str] | tuple[str, ...] = ()) -> dict[str, Any]:
     """Wipe releases and restore the snapshot (minus `exclude` keys, e.g. ["0.9.0"]). Caller commits."""
-    snap = snapshot_dir or SNAPSHOT_DIR
+    snap = snapshot_dir or default_snapshot_dir()
     manifest = load_manifest(snap)
     if manifest is None:
         raise FileNotFoundError(f"no MANIFEST.json in {snap}")
@@ -89,6 +102,7 @@ def restore(s: Session, snapshot_dir: Path | None = None, exclude: list[str] | t
     _confirm_profile(s)
     restored: list[str] = []
     w8_finding: Finding | None = None
+    w8_release: Release | None = None
     for rel in manifest["releases"]:
         if rel["key"] in exclude:
             continue
@@ -108,16 +122,16 @@ def restore(s: Session, snapshot_dir: Path | None = None, exclude: list[str] | t
             f = Finding.model_validate(v.model_dump(include=set(Finding.model_fields)))  # AI values only
             s.add(FindingRow(id=f.id, assessment_id=f.assessment_id, requirement_id=f.requirement_id, ord=i,
                              data=_j(f)))
-            if rel["key"] == "0.9.0" and f.requirement_id == W8:
-                w8_finding = f
+            if w8_finding is None and f.requirement_id == W8:  # earliest restored release (0.9.0, else rc)
+                w8_finding, w8_release = f, release
         for ev in res.events:
             s.add(AgentEventRow(run_id=ev.run_id, seq=ev.seq, data=_j(ev)))
         s.flush()
         restored.append(release.version)
-    if w8_finding is not None:  # counsel decides W8 on 0.9.0; it carries to rc and 1.0.0 (profile unchanged)
+    if w8_finding is not None:  # counsel decides W8 on 0.9.0; it carries to later releases (profile unchanged)
         br = w8_baseline_review()
-        created = datetime.fromisoformat(s.get(ReleaseRow, "rel-0.9.0").created_at)
-        rev = Review(id="rev-w8-0.9.0", finding_id=w8_finding.id, requirement_id=W8, product_id=PRODUCT.id,
+        created = datetime.fromisoformat(s.get(ReleaseRow, w8_release.id).created_at)
+        rev = Review(id=f"rev-w8-{w8_release.version}", finding_id=w8_finding.id, requirement_id=W8, product_id=PRODUCT.id,
                      reviewer_name=br.reviewer_name, decision=br.decision, comment=br.comment,
                      evidence_fingerprint=br.evidence_fingerprint, created_at=created)
         s.add(ReviewRow(id=rev.id, finding_id=rev.finding_id, requirement_id=W8, product_id=rev.product_id,
@@ -155,4 +169,4 @@ def reset(s: Session, snapshot_dir: Path | None = None) -> dict[str, Any]:
     return seed(s)
 
 
-__all__ = ["restore", "start", "reset", "wipe", "load_manifest", "w8_baseline_review", "SNAPSHOT_DIR"]
+__all__ = ["restore", "start", "reset", "wipe", "load_manifest", "w8_baseline_review", "demo_dir", "SNAPSHOT_DIR"]

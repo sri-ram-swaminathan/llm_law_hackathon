@@ -62,6 +62,27 @@ def test_reset_and_start(client, monkeypatch):
     assert asm["status"] == "completed" and asm["run_id"] == body["run_id"]
     versions = {x["release"]["version"] for x in client.get("/api/releases", headers=H).json()}
     assert versions == {"0.9.0", "1.0.0-rc.12", "1.0.0"}
+    # W8 counsel review survives start (attached to rc): 1.0.0 stays READY, rc shows W8 reviewed
+    assert client.get("/api/releases/rel-1.0.0/readiness", headers=H).json()["gate"] == "READY"
+    rc = client.get("/api/releases/rel-1.0.0-rc.12", headers=H).json()["latest_assessment"]["id"]
+    w8 = [f for f in client.get(f"/api/assessments/{rc}/findings", headers=H).json()
+          if f["requirement_id"] == "AI-TRANSPARENCY-01"][0]
+    assert w8["effective_conclusion"] == "not_applicable" and w8["applicable_review"]["decision"] == "not_applicable"
+
+
+def test_demo_dir_env(client, monkeypatch, tmp_path):
+    import shutil
+
+    from cco import demo
+
+    root = tmp_path / "mounted-demo"
+    shutil.copytree(demo.SNAPSHOT_DIR.parent, root)
+    monkeypatch.setenv("CCO_DEMO_DIR", str(root))
+    monkeypatch.setenv("CCO_DEMO", "1")
+    assert demo.default_snapshot_dir() == root / "snapshot"
+    assert client.post("/api/demo/reset", headers=H).status_code == 200
+    monkeypatch.setenv("CCO_DEMO_DIR", str(tmp_path / "nowhere"))
+    assert client.get("/api/demo", headers=H).json()["manifest"] is None
 
 
 def test_409_while_running(client, monkeypatch):
