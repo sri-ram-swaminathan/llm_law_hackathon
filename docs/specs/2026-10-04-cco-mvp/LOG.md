@@ -16,3 +16,5 @@
 - 2026-10-04 14:26 · run · pushed ft/cco-mvp
 - 2026-10-04 14:33 · approved · spec → approved — signed off by Roman Grebnev (start /roman-plan), fast mode: wave-end checks
 - 2026-10-04 14:33 · spec · approved; FinTechProto compliance docs drafted on its ft/cco-mvp (81bbbbe v0.9.0, dbd5d3c v1.0.0)
+- 2026-10-04 14:33 · run · pushed ft/cco-mvp
+- 2026-10-04 14:46 · preflight · full: git-clean=warn, env:MISTRAL_API_KEY=missing

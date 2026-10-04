@@ -4,14 +4,14 @@ slug: cco-mvp
 created: 2026-10-04
 status: approved                  # draft → approved → planned → executing → verifying → closed
 size: full                     # lite | full
-base_branch: main           # asked at the start: main or dev
+base_branch: dev            # asked at the start: main or dev
 integration_branch: ft/cco-mvp
 task_branch_pattern: ft/cco-mvp-{id}
 repos: [., ../FinTechProto]    # the lead repo first; other repos as relative paths
 run_mode: step                 # step (stop after every wave) | auto (stop at gates only)
 push: all                      # none | integration | all
 docker_parallel: 1             # max Docker-using tasks at once
-needs: [gh, docker, env:MISTRAL_API_KEY]   # spec-wide preflight needs
+needs: [gh, docker, env:MISTRAL_API_KEY@.env]   # spec-wide preflight needs
 ---
 
 # CCOmmit — AI Chief Compliance Officer MVP
@@ -643,15 +643,71 @@ Resolved:
 
 ## 12. Plan
 
-<!-- Filled by /roman-plan. The sketch below is input to planning, not the plan. -->
+**Graph page (shareable):** https://claude.ai/artifact/BnigUdDtWN4NtAJd1aaybU
 
-| Wave | Work | Gate after |
+**Shape:** 25 tasks: 19 work (Sonnet agents, `review: none`), 2 checks (V2, VA), 4 human gates.
+- **Fast mode** (Roman): each work task merges on its own build or unit test. The only full checks are **V2** (a live end-to-end run plus the model spike, before the UI demo) and **VA** (acceptance).
+- **Critique 02** (plan, one critic) was applied:
+  - the reviews API moved to T03;
+  - Makefile recipes are real;
+  - dependencies are pre-locked in T01 and T02;
+  - frontend slots live in T02;
+  - the missing dependencies on G1 and T14 were added;
+  - the demo refs `demo/rc` and `demo/v1` exist;
+  - T18 does a local CI dry run;
+  - CORS and a console-error check were added.
+
+| Wave | Tasks (parallel) | What it delivers |
 |---|---|---|
-| W0 | **T01 contracts:** Pydantic models, OpenAPI + TS types, pack schema with remediation templates, `expected.yaml`, fixtures + event streams, design tokens | Opus review of the contracts |
-| W1 | Web shell + Overview + Findings on fixtures · FastAPI skeleton + DB + seed + tokens · **model spike: CLI evaluator on W1–W3 against v0.9.0** · pack + CELLAR ingest + curated CMF and guidance cache · Wealthpilot compliance docs + FinTechProto prep (human: docs-only commit, `v0.9.0` tag) · `cco audit` CLI skeleton emitting fixture results + a workflow stub on a GitHub runner | **Midpoint:** AC2 + ≥ 2/3 golden findings live from the spike |
-| W2 | Finding workspace + viewers + legal drawer + inline review · evaluator + validation/retry in the pipeline · activity events + SSE + live panel · bundle ingestion + hardening + demo bundles | AC3, AC5, AC10, AC11, AC14 |
-| W3 | Carry-forward + readiness changes · fix-plan renderer · MCP (4 tools) · `cco audit` / `import` / `export-baseline` + comment rendering · live wiring | AC4, AC6, AC7, AC9, AC12, AC13a |
-| W4 | FinTechProto `dev` pushes (fix-plan items) + workflow; human gates: secrets, branch protection, release-PR merge, `v1.0.0` tag · polish, replay, demo-reset, rehearsal | AC13b, final verify |
+| 1 | T01 · T07 · **G1 (Roman)** | Contracts + fixtures + locked deps · demo-app partial fixes · v0.9.0 tag |
+| 2 | T02 · T03 · T04 · T05 · T06 · T13 | Web shell, API + reviews, legal layer, pack, evaluator, demo-app full fixes (**6 agents**) |
+| 3 | T08 · T09 · T10 · T11 · T12 | Workspace + viewer with highlights, activity UI, pipeline, events/SSE, ingestion (**5 agents**) |
+| 4 | T14 · T15 · T17 · **V2** | Carry-forward, fix plan + MCP, releases/fix-plan UI · **live end-to-end check** |
+| 5 | **G2 (Roman: UI demo)** · T16 | Click-through and feedback · `cco audit`/`import`/eval |
+| 6 | T18 · T19 | CI workflow + local dry run · UI polish + demo script |
+| 7 | **G3 (Roman)** | Release PR red → green on GitHub, tag v1.0.0 |
+| 8 | VA | AC1–AC14 + demo script, rehearsed twice |
+| 9 | **G4 (Roman)** | Final go; PR `ft/cco-mvp → dev` |
+
+**Gates:**
+
+| Gate | Who | Decides or does |
+|---|---|---|
+| G1 | Roman | Publishes FinTechProto v0.9.0 |
+| G2 | Roman | UI demo; go, or adjust (feedback feeds T19) |
+| G3 | Roman | Base-branch CI demo steps in FinTechProto |
+| G4 | Roman | Final go/no-go |
+
+**Critical path:** T01 → T06 → T10 → T14 → T16 → T18 → G3 → VA → G4.
+
+**Branching:**
+- **CCOmmit:** `dev` (created from `main`) ← `ft/cco-mvp` ← task branches `ft/cco-mvp-<id>`, one worktree each, merged `--no-ff`.
+- **FinTechProto:** agents work on `ft/cco-mvp` and the refs `demo/rc` and `demo/v1`. Only Roman touches `main`, `dev` and tags.
+
+**Execution:** `/roman-run` with the kit's wave workflow. Each wave's work tasks start as parallel Sonnet agents with tight briefs (task file + owned paths + contracts).
+
+```mermaid
+graph TD
+  G1{{"G1 · v0.9.0 tag (Roman)"}}
+  G2{{"G2 · UI demo (Roman)"}}
+  G3{{"G3 · PR red→green, v1.0.0 (Roman)"}}
+  G4{{"G4 · final go (Roman)"}}
+  T01["T01 · Contracts + fixtures"] --> T02["T02 · Web shell"] & T03["T03 · API core + reviews"] & T04["T04 · Legal layer"] & T05["T05 · Pack + scoper"] & T06["T06 · Evaluator"]
+  T07["T07 · FTP fixes 3–6"] --> T13["T13 · FTP fixes 1–2"]
+  T02 & T03 & T04 --> T08["T08 · Workspace + viewer"]
+  T02 & T03 --> T09["T09 · Activity + review UI"]
+  T03 & T04 & T05 & T06 --> T10["T10 · Pipeline"]
+  T03 --> T11["T11 · Events + SSE"] & T12["T12 · Ingestion"]
+  T10 --> T14["T14 · Carry-forward"]
+  G1 & T05 & T10 --> T15["T15 · Fix plan + MCP"]
+  G1 & T06 & T10 & T12 & T14 --> T16["T16 · CLI + eval"]
+  T08 & T09 & T12 --> T17["T17 · Releases + fix-plan UI"]
+  T08 & T09 & T10 & T11 & T12 & T13 --> V2(["V2 · live E2E check"]) --> G2
+  T07 & T13 & T16 --> T18["T18 · CI workflow"]
+  G2 & T14 & T15 & T16 & T17 --> T19["T19 · UI polish + demo script"]
+  G1 & T13 & T18 --> G3
+  T19 & G3 --> VA(["VA · acceptance"]) --> G4
+```
 
 **Cut order if time runs short:**
 1. pgvector "related provisions"
