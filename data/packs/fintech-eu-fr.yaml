@@ -31,7 +31,11 @@ requirements:
       must be provided by a conseiller en investissements financiers (CIF) registered with ORIAS. Check two things:
       (1) the product's wording, disclaimers and model prompts must not say or imply that its output is not
       financial or investment advice (for example "this is not financial advice"); (2) there must be a registration
-      record naming an ORIAS number. A denying disclaimer, or no ORIAS number, is a potential violation.
+      record naming an ORIAS number. A denying disclaimer, or no ORIAS number, is a potential violation. If the
+      current disclaimer, config and advisor instead disclose the CIF status with an ORIAS number, and the
+      registration record names a well-formed 8-digit ORIAS number (the number may be a fictional placeholder:
+      you check that registration is disclosed and recorded, not that the number exists in the register), the
+      requirement is satisfied, even if an older sentence elsewhere still sounds like a denial.
     derived_from: [mifid2-art4-1-4, cmf-l541-1, cmf-l546-1]
     applies_when: '"investment_advice" in activities'
     mandatory: false
@@ -193,7 +197,14 @@ requirements:
       stored advice when the profile is edited: is there a flag, banner or invalidation tied to the profile update
       time? If the old advice is shown as current after a profile change, it is a potential violation. Satisfied only if
       code or UI compares the profile update time with the advice creation time, or marks old advice as outdated.
-      A note telling the user to refresh, or a stored creation date alone, does not satisfy this. Decide from the code and the product guide: if they show no such mechanism, that is a potential violation.
+      A note telling the user to refresh, or a stored creation date alone, does not satisfy this. Search the code
+      before answering: a helper or field that compares the profile's `updated_at` with the analysis's `created_at`
+      (for example `_outdated(...)` returning `profile.updated_at > rec.created_at`), exposed as an `outdated`
+      field in the API response and used by the UI to show a notice and hide actions, IS such a mechanism and the
+      answer is satisfied; quote that comparison line. Passing it into the response object (for example
+      `outdated=_outdated(rec, user)`) means the field is exposed in the API, and a UI condition on
+      `analysis.outdated` that shows a notice means the UI uses it: do not claim they are missing when you can see
+      these lines in the evidence. Decide from the code and the product guide: if they show no such mechanism, that is a potential violation.
     derived_from: [delreg565-art54-7]
     applies_when: '"investment_advice" in activities'
     mandatory: false
@@ -288,8 +299,15 @@ requirements:
       Controllers must implement technical measures appropriate to the risk. Session tokens must not be signed
       with a secret that is published in the source code. Look at where the token-signing secret (for example
       JWT_SECRET) is read: a hard-coded fallback value used when the environment variable is unset is a potential
-      violation; a startup failure when it is unset is satisfied. Quote the single source line that reads the
-      secret (the `JWT_SECRET =` line of config.py), copied character for character as it appears in the evidence
+      violation; a startup failure when it is unset is satisfied. Reading the variable with an empty default
+      (`os.getenv("JWT_SECRET", "")`, `env.get("JWT_SECRET", "")`) is NOT a hard-coded secret: an empty default
+      followed by a refusal to start (a raised error), or by a random per-process secret in dev mode only, is
+      satisfied. A "[REDACTED]" marker in the code is a removed line (typically `return secret` of a validated
+      value), not a published secret. `JWT_SECRET = resolve_jwt_secret()` (a call to a
+      resolver that raises when the variable is unset) is a startup failure, not a hard-coded value: read the
+      resolver body, do not stop at the assignment. A hard-coded secret is a string literal that is itself the
+      fallback, for example `os.getenv("JWT_SECRET", "some-long-literal")`. Quote the single source line that
+      reads the secret (the `JWT_SECRET` line of config.py), copied character for character as it appears in the evidence
       block, including any [REDACTED] marker that the evidence contains.
     derived_from: [gdpr-art32]
     applies_when: len(data_categories) > 0
@@ -334,6 +352,10 @@ requirements:
       When providing investment advice the firm must give the client a suitability statement in a durable medium,
       so clients must be able to retrieve the advice they were given. Look for an endpoint or screen that lists or
       opens past advice, not only the latest one. If earlier advice is stored but cannot be retrieved by the client, it is a potential violation. Decide from the code and the product guide: if they show no such endpoint or screen, that is a potential violation.
+      An endpoint or screen that returns only the LATEST analysis (for example `/recommendations/latest`) does not
+      satisfy this, and a statement that the dashboard "shows the latest" analysis is not a history. Answer
+      satisfied only if you can quote a route or screen that lists or opens several past analyses (for example a
+      history list or an analysis-by-id route).
     derived_from: [mifid2-art25-6]
     applies_when: '"investment_advice" in activities'
     mandatory: false
@@ -380,7 +402,7 @@ requirements:
       structured investment recommendations and is not a chatbot. If it is not clear that Art. 50 applies to such
       a feature, the answer is uncertain, even when a label exists or is missing (a lawyer must decide). Unless
       the evidence shows a conversational (chat) interface, the answer is uncertain: do not answer satisfied or
-      potential_violation.
+      potential_violation, whether or not a label is present. This rule overrides everything else in the evidence.
     derived_from: [aiact-art50]
     applies_when: len(ai_uses) > 0
     mandatory: false

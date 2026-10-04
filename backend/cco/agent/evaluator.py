@@ -83,6 +83,14 @@ what is there.
 - Use insufficient_evidence ONLY for a document kind listed under ABSENT DOCUMENT KINDS. If the documents and code \
 are present and show that the required element is missing from the product, the answer is potential_violation, \
 not insufficient_evidence.
+- Before concluding potential_violation for a requirement about something that must be ABSENT or REMOVED \
+(a denying disclaimer, a hard-coded default, a missing element), first check whether the current code and \
+documents actually still contain it. If the remediation is present (the disclaimer now discloses the status, the \
+secret is read from the environment with a startup failure instead of a fallback, the element now exists), the \
+answer is satisfied. When code and a document disagree, prefer the code: it is what the product does now.
+- A fictional or placeholder identifier (for example an 8-digit registration number marked as a demo value) \
+counts as present when the requirement asks for a number to be disclosed and recorded: you do not verify it \
+against an external register.
 - uncertain: only if you truly cannot decide even with the tools.
 Never answer not_applicable; applicability is decided elsewhere. Do not output severity.
 
