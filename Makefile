@@ -9,7 +9,7 @@ WEB_PORT ?= 20001
 export CCO_DATABASE_URL ?= postgresql+psycopg://cco:cco@127.0.0.1:20002/cco
 FIXTURE_REL ?= 0.9.0
 
-.PHONY: dev api web db-up db-down seed demo-reset demo-bundles demo-export types contracts-check test verify-w2 acceptance
+.PHONY: dev api web db-up db-down seed demo-reset demo-bundles demo-export types contracts-check test verify-w2 acceptance up down logs
 
 dev: ## API on :20000 and web on :20001 (Ctrl-C stops both)
 	@trap 'kill 0' INT TERM EXIT; \
@@ -64,3 +64,14 @@ verify-w2: ## V2: live end-to-end check
 
 acceptance: ## VA: AC1-AC14 + demo script
 	bash docs/specs/2026-10-04-cco-mvp/acceptance.sh
+
+up: ## whole stack in Docker: db + api (:20000) + web (:20001)
+	$(COMPOSE) up -d --build --wait
+	@echo "web  http://127.0.0.1:$(WEB_PORT)"; echo "api  http://$(API_HOST):$(API_PORT)  (docs: /docs)"
+	@echo "deploy token: CCO_DEPLOY_TOKEN from .env, default 'dev-token' (send as 'Authorization: Bearer <token>')"
+
+down: ## stop the stack (keeps volumes)
+	$(COMPOSE) down
+
+logs: ## follow api + web logs
+	$(COMPOSE) logs -f api web
