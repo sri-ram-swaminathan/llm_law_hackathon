@@ -13,6 +13,7 @@ from .api import (
     assessments,
     demo,
     findings_read,
+    github_ci,
     fixplan,
     product,
     provisions,
@@ -42,6 +43,7 @@ ROUTERS = [
     provisions.router,
     search.router,
     demo.router,
+    github_ci.router,
 ]
 
 

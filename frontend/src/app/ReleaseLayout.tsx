@@ -1,8 +1,9 @@
 import { motion, useReducedMotion } from "framer-motion";
-import { Loader2, RotateCw } from "lucide-react";
+import { ExternalLink, GitPullRequest, Loader2, RotateCw } from "lucide-react";
 import { useMemo } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, NavLink, Navigate, Outlet, useParams } from "react-router";
-import { ApiError, describeError, type FindingView, type ReleaseOut } from "@/api/client";
+import { ApiError, describeError, FIXTURES, http, type FindingView, type ReleaseOut } from "@/api/client";
 import { Button } from "@/components/button";
 import { Skeleton } from "@/components/card";
 import { ErrorBanner, NotFound } from "@/components/feedback";
@@ -51,6 +52,46 @@ function ReRun({ releaseId, version, productId }: { releaseId: string; version: 
           {run.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
           <span className="hidden sm:inline">Re-run</span>
           <span className="hidden font-mono text-code text-text-2 lg:inline">{versionLabel(version)}</span>
+        </Button>
+      </Tip>
+    </div>
+  );
+}
+
+type GhRun = { id: number; url: string; status: string; conclusion: string | null; sha: string; attempt: number; pr_number: number | null; pr_url: string | null };
+
+/** Run the release check on GitHub Actions (re-runs the open release PR's `compliance` workflow) and link to it. */
+function RunOnGitHub() {
+  const checks = useQuery({
+    queryKey: ["github-checks"],
+    queryFn: () => http<{ repo: string; runs: GhRun[] }>("/api/github/checks?limit=3"),
+    enabled: !FIXTURES, retry: false,
+    refetchInterval: (q) => (q.state.data?.runs?.[0] && q.state.data.runs[0].status !== "completed" ? 5000 : 30000),
+  });
+  const rerun = useMutation({
+    mutationFn: () => http<{ started: boolean; run: GhRun; pr_url: string }>("/api/github/rerun", { method: "POST" }),
+    onSuccess: () => checks.refetch(),
+  });
+  if (FIXTURES || checks.isError) return null;
+  const last = rerun.data?.run ?? checks.data?.runs?.[0];
+  const state = !last ? null : last.status !== "completed" ? "running" : last.conclusion === "success" ? "passed" : "failed";
+  const tone = state === "passed" ? "text-satisfied-fg" : state === "failed" ? "text-blocker-fg" : "text-text-2";
+  return (
+    <div className="flex items-center gap-2">
+      {last && (
+        <a href={last.url} target="_blank" rel="noreferrer" data-testid="github-run-link"
+          className={cn("hidden items-center gap-1 text-sm hover:underline sm:inline-flex", tone)}
+          title={`GitHub Actions run ${last.id} · attempt ${last.attempt} · commit ${last.sha}`}>
+          {state === "running" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          GitHub check {state === "running" ? "running" : state}{last.pr_number ? ` · PR #${last.pr_number}` : ""}
+          <ExternalLink className="h-3 w-3" />
+        </a>
+      )}
+      {rerun.isError && <span role="alert" className="hidden text-sm text-blocker-fg sm:inline">{describeError(rerun.error)}</span>}
+      <Tip label="Re-run the compliance check on GitHub Actions for the open release PR">
+        <Button variant="secondary" onClick={() => rerun.mutate()} disabled={rerun.isPending || state === "running"} data-testid="run-on-github">
+          {rerun.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitPullRequest className="h-3.5 w-3.5" />}
+          <span className="hidden sm:inline">Run on GitHub</span>
         </Button>
       </Tip>
     </div>
@@ -144,7 +185,7 @@ export function ReleaseLayout() {
             {r ? <GateChip gate={r.gate} label={r.gate_label} aiOnly={r.counsel_reviewed.reviewed === 0} size="md" />
               : release.latest_assessment ? <Skeleton className="h-6 w-20 rounded-full" /> : <span className="text-sm text-text-3">Not assessed</span>}
             <ProvenanceLine release={release.release} run={run.data} className="min-w-0 basis-full md:basis-auto" />
-            <div className="ml-auto"><ReRun releaseId={releaseId} version={version} productId={productId} /></div>
+            <div className="ml-auto flex items-center gap-3"><RunOnGitHub /><ReRun releaseId={releaseId} version={version} productId={productId} /></div>
           </div>
           <ReleaseTabs productId={productId} version={version} tabs={tabs} />
         </div>
