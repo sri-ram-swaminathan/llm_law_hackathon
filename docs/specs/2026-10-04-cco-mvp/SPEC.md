@@ -246,7 +246,7 @@ class LegalKnowledgeProvider(Protocol):
   | EU AI Act | CELEX `32024R1689` | CELLAR REST | ✅ full text, Art. 50 present |
   | GDPR (consolidated) | CELEX `02016R0679-20160504` | CELLAR REST | ✅ full text |
   | MiFID II + Del. Reg. 2017/565 | CELEX `32014L0065`, `32017R0565` | CELLAR REST | ✅ (32014L0065 checked) |
-  | Code monétaire et financier (L.541-1, L.546-1; section `LEGISCTA000006100807` of `LEGITEXT000006072026`) | Légifrance | **hand-curated** into `data/corpus-cache/` with the Légifrance `source_url` and `source: manual` | ⏳ live API is stretch (Q8) |
+  | Code monétaire et financier (L.541-1, L.546-1; section `LEGISCTA000006100807` of `LEGITEXT000006072026`) | Légifrance | **hand-curated**: Légifrance PDFs supplied by Roman → `data/sources/legifrance/CMF-L541-1.{pdf,md}`, `CMF-L546-1.{pdf,md}` (text + metadata) → ingested into `data/corpus-cache/` with `source: manual` | ✅ L.541-1 (in force since 24/05/2019) and L.546-1 (since 24/12/2021) captured 4 Oct. L.541-1 I 1° points to **L.321-1 (5)** for the definition of "conseil en investissement"; add it the same way. Live API is stretch (Q8) |
   | *Guidance:* ESMA Guidelines on MiFID II suitability (ESMA35-43-3172) | ESMA PDF | curated excerpts, `kind: guidance` (W2, W4, W7) | ✅ PDF reachable (310 KB) |
   | *Guidance:* AMF doctrine on CIF status and investment advice | amf-france.org | curated excerpts, `kind: guidance` (W1) | ✅ site reachable; pages to pick |
   | *Guidance:* CNIL guidance (information notices, right to erasure) | cnil.fr | curated excerpts, `kind: guidance` (W3, W5) | ✅ site reachable; pages to pick |
@@ -454,7 +454,7 @@ CI uses it for **review carry-forward** (B1: the W8 decision) and for **changes 
 
 **Human gate tasks:**
 - Add the two secrets.
-- Branch protection on FinTechProto `main`, with `compliance` as a required check. This needs admin on Artifacts7/FinTechProto; Roman has write access only.
+- Branch protection on FinTechProto `main`, with `compliance` as a required check. The repo was transferred to RomanGrebnev/FinTechProto on 4 Oct; Roman is admin, so he can do this himself.
 - CODEOWNERS for `.github/` and `compliance/`.
 - Commit the docs-only `v0.9.0` change and `cco-baseline.json`.
 - The tags and the release-PR merge.
@@ -629,7 +629,7 @@ Layout: `backend/`, `frontend/`, `contracts/`, `data/packs/`, `data/corpus-cache
 
 1. **Q6 Owners:** who owns contracts, web, pipeline, legal pack, demo documents and FinTechProto prep? (Deferred to `/roman-plan`.)
 2. **Q8 Légifrance:** the PISTE Client ID and environment. Only AC8b depends on it. (Deferred: stretch.)
-3. **Admin on Artifacts7/FinTechProto:** branch protection and secrets need the repo owner. (Deferred to the W4 gate tasks.)
+3. ~~Admin on FinTechProto~~ → resolved: the repo moved to RomanGrebnev/FinTechProto (private, Roman is admin). Secrets and branch protection stay W4 gate tasks for Roman.
 
 Resolved:
 - Q1 runtime → D1.
