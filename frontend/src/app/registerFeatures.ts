@@ -1,17 +1,12 @@
-import { register as finding } from "@/features/finding";
-import { register as viewer } from "@/features/viewer";
-import { register as legal } from "@/features/legal";
-import { register as evidence } from "@/features/evidence";
-import { register as activity } from "@/features/activity";
-import { register as review } from "@/features/review";
-import { register as persona } from "@/features/persona";
-import { register as fixplan } from "@/features/fixplan";
-import { register as releases } from "@/features/releases";
-import { register as profile } from "@/features/profile";
-import { register as overview } from "@/features/overview";
-import { register as findings } from "@/features/findings";
+/**
+ * Every feature folder may export `register()` from its `index.ts(x)` to contribute slot components.
+ * Discovered by glob, so adding or deleting a feature folder never requires editing `src/app/**`.
+ */
+const modules = import.meta.glob<{ register?: () => void }>("../features/*/index.{ts,tsx}", { eager: true });
 
-/** Every feature folder registers its slot contributions here, once at startup. */
+let done = false;
 export function registerFeatures() {
-  [overview, findings, finding, viewer, legal, evidence, activity, review, persona, fixplan, releases, profile].forEach((r) => r());
+  if (done) return;
+  done = true;
+  for (const m of Object.values(modules)) if (typeof m.register === "function") m.register();
 }
